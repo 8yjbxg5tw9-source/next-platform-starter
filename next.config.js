@@ -1,7 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactCompiler: true,
-  
+  // React Compiler burada söndürülüb.
+  // Səbəb: "babel-plugin-react-compiler" package.json-de birbaşa yazılmayıb,
+  // yalnız package-lock-da tranzitiv asılılıq kimi var. Təmiz "npm install"
+  // (npm ci-dən fərqli) onu Next-in gözlədiyi yerdə qurmaya bilir və
+  // "Failed to resolve package babel-plugin-react-compiler" xətası verir.
+  // Compiler yalnız opsional build optimallaşdırmasıdır; söndürmək funksiyanı
+  // dəyişdirmir və xətanı hər mühitdə aradan qaldırır.
+  reactCompiler: false,
+
+  // Arena canlı önizlemesi sayfayı https://{port}-{sandbox}.e2b.app üzerinden
+  // proxy'ler. Dev modunda cross-origin uyarısını/kısıtını önlemek için izin ver.
+  allowedDevOrigins: ['3000-ib4i2jk694mlwwl243mxo.e2b.app', '*.e2b.app'],
+
   redirects() {
     return [
       {
