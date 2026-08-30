@@ -4,7 +4,9 @@ export function middleware(request) {
   const response = NextResponse.next();
   
   // Add security headers
-  response.headers.set('X-Frame-Options', 'DENY');
+  // NOT: X-Frame-Options: DENY kaldırıldı. Bu starter'da demo amaçlıydı ve
+  // Arena canlı önizlemesi (iframe) sayfayı tamamen karartıyordu.
+  // Gerçek üretimde DENY yerine Content-Security-Policy: frame-ancestors kullanın.
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   
