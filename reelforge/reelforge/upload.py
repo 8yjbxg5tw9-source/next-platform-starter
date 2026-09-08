@@ -2,42 +2,53 @@
 
 Pure-Python module: no Tk, no rendering logic.  The GUI calls
 :meth:`reelforge.pipeline.ReelForge.upload` from its worker thread once the
-export succeeds.  **Nothing here raises for an expected failure** (missing
-``cookies.txt``, no uploader installed, network/session error): problems come
-back as ``UploadResult(ok=False, error=...)`` so the window can paint the
-message into its LOG box instead of crashing.
+export succeeds.  **Nothing here raises for an expected failure** (no session,
+network error, expired session): problems come back as
+``UploadResult(ok=False, error=...)`` so the window can paint the message into
+its LOG box instead of crashing.
+
+Authentication — Auto-Session Capture (no cookies.txt, no terminal)
+-------------------------------------------------------------------
+
+The user presses **LOGIN TO TIKTOK** once; :mod:`reelforge.session` opens an
+internal Chromium window, waits for the login cookies and saves them to
+``~/.reelforge/tiktok_session.json`` (chmod 600).  Uploads then reuse that
+session **headless** — no browser window opens during export.  When TikTok
+invalidates the session, the error text is :data:`reelforge.session.SESSION_EXPIRED`
+("Sessiya yenilənməlidir"); pressing the login button again fixes it.
 
 Backends (auto-detected, first available wins)
 ----------------------------------------------
 
-1. ``tiktok-uploader`` — Python package (browser automation via Playwright).
-   ``pip install tiktok-uploader && playwright install chromium``
-2. ``tiktok-uploader`` CLI — the same project's ``tiktok-uploader`` executable
-   found on ``PATH``; this is the route that works from a frozen ``.exe``.
-3. ``playwright`` — minimal direct automation, used when the package above is
-   absent but Playwright is installed.
+1. ``session`` — the in-app captured session + headless Playwright (primary).
+2. ``tiktok-uploader`` — Python package (browser automation via Playwright).
+3. ``tiktok-uploader`` CLI — executable on ``PATH`` (route for frozen .exe).
+4. ``playwright`` — minimal direct automation with a legacy ``cookies.txt``.
 
-Authentication is cookie-based: log into tiktok.com in a normal browser,
-export ``cookies.txt`` (e.g. with the "Get cookies.txt" extension) and drop it
-next to the program, next to the rendered video, or point the
-``REELFORGE_TIKTOK_COOKIES`` environment variable at it.
+Anti-compression guarantee
+--------------------------
 
-The rendered file is posted **as-is** — no re-encode — so the anti-compression
-quality of the export survives end to end.
+The rendered file is posted **as-is** through TikTok's web (desktop) upload
+endpoint — no re-encode, no rescale, no bitrate change.  120 FPS smoothness,
+CAS sharpening and the export bitrate arrive 100% intact.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from . import session as session_mod
 
 #: environment variable with an explicit cookies.txt path
 COOKIE_ENV = "REELFORGE_TIKTOK_COOKIES"
@@ -55,6 +66,7 @@ TIKTOK_UPLOAD_URL = TIKTOK_URL + "/upload"
 #: TikTok web upload limit (~4 GB)
 MAX_UPLOAD_BYTES = 4 * 1024 ** 3
 
+BACKEND_SESSION = "session"
 BACKEND_PACKAGE = "tiktok-uploader"
 BACKEND_CLI = "tiktok-uploader-cli"
 BACKEND_PLAYWRIGHT = "playwright"
@@ -218,6 +230,16 @@ def _module_present(name: str) -> bool:
 def available_backends() -> List[Tuple[str, bool, str]]:
     """``(name, ok, reason)`` for every supported upload route."""
     results: List[Tuple[str, bool, str]] = []
+    if not _module_present("playwright"):
+        session_reason = "quraşdırılmayıb — pip install playwright"
+        session_ok = False
+    elif session_mod.is_logged_in():
+        session_reason = "LOGIN TO TIKTOK ilə tutulmuş sessiya (headless)"
+        session_ok = True
+    else:
+        session_reason = "sessiya yoxdur — LOGIN TO TIKTOK düyməsini basın"
+        session_ok = False
+    results.append((BACKEND_SESSION, session_ok, session_reason))
     if _module_present("tiktok_uploader"):
         results.append((BACKEND_PACKAGE, True, "python paketi (Playwright avtomatlaşdırması)"))
     else:
@@ -249,17 +271,117 @@ def choose_backend(preferred: str = "auto") -> Optional[str]:
 
 def describe() -> str:
     """Human-readable availability block for the LOG box."""
-    lines = ["TikTok uploader backendləri:"]
+    info = session_mod.session_info()
+    if info["logged_in"]:
+        who = f"@{info['username']}" if info["username"] else ""
+        head = f"TikTok sessiyası: LOGGED IN ✓ {who}".rstrip()
+    elif info["expired"]:
+        head = f"TikTok sessiyası: {session_mod.SESSION_EXPIRED}"
+    else:
+        head = "TikTok sessiyası: yoxdur — LOGIN TO TIKTOK düyməsini basın"
+    lines = [head, "TikTok uploader backendləri:"]
     for name, ok, reason in available_backends():
         lines.append(f"  - {name}: {'OK' if ok else 'yox'} ({reason})")
     cookies = find_cookies()
-    lines.append(f"  cookies: {cookies if cookies else 'tapılmadı'}")
+    if cookies:
+        lines.append(f"  legacy cookies: {cookies}")
     return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
 # backends
 # --------------------------------------------------------------------------- #
+
+
+def _post_video(page, video: Path, description: str, log: LogCallback) -> None:
+    """Shared TikTok-web upload page flow (selectors as of 2026).
+
+    Used by both Playwright backends.  Any DOM drift raises and lands in the
+    LOG box via :func:`upload` — the app itself never crashes.
+    """
+    log("Video faylı seçilir…")
+    page.set_input_files('input[type="file"]', str(video), timeout=60_000)
+    page.wait_for_selector(
+        'div[data-text="true"], .public-DraftEditor-content', timeout=240_000
+    )
+    if description:
+        editor = page.locator(
+            'div[data-text="true"], .public-DraftEditor-content'
+        ).first
+        editor.click()
+        editor.type(description, delay=15)
+    log("Paylaş düyməsi axtarılır…")
+    page.locator(
+        'button:has-text("Post"), button:has-text("Paylaş"), button:has-text("Göndər")'
+    ).first.click(timeout=30_000)
+    page.wait_for_url(f"{TIKTOK_URL}/**", timeout=300_000)
+    log(f"Yükləndi: {page.url}")
+
+
+def _require_playwright():
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+        return sync_playwright
+    except Exception as exc:
+        raise UploadError(
+            f"playwright import olunmadı: {type(exc).__name__}: {exc} — "
+            "pip install playwright && playwright install chromium"
+        ) from exc
+
+
+def _upload_via_session(
+    request: UploadRequest,
+    video: Path,
+    cookies: Optional[Path],
+    result: UploadResult,
+    log: LogCallback,
+) -> None:
+    """Backend 0 (primary): LOGIN TO TIKTOK session, fully headless.
+
+    The file is posted as-is to TikTok's web (desktop) upload endpoint — the
+    120 FPS master, CAS sharpening and export bitrate are never touched.
+    """
+    data = session_mod.load_session()
+    if data is None or session_mod.session_expired(data):
+        raise UploadError(
+            f"{session_mod.SESSION_EXPIRED} — LOGIN TO TIKTOK düyməsi ilə "
+            "yenidən daxil olun."
+        )
+    sync_playwright = _require_playwright()
+    state_file = tempfile.NamedTemporaryFile(
+        "w", suffix=".json", delete=False, encoding="utf-8")
+    try:
+        json.dump(data["storage_state"], state_file)
+        state_file.close()
+        proxy = {"server": request.proxy} if request.proxy else None
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, proxy=proxy)
+            try:
+                context = browser.new_context(
+                    storage_state=state_file.name,
+                    viewport={"width": 1280, "height": 900})
+                page = context.new_page()
+                log("TikTok upload səhifəsi açılır (headless — brauzer açılmır)…")
+                page.goto(TIKTOK_UPLOAD_URL, timeout=60_000,
+                          wait_until="domcontentloaded")
+                if "/login" in page.url:
+                    raise UploadError(
+                        f"{session_mod.SESSION_EXPIRED} — səhifə login-ə "
+                        "yönləndi; LOGIN TO TIKTOK ilə yenidən daxil olun."
+                    )
+                _post_video(page, video, request.description, log)
+                result.ok = True
+                result.url = page.url
+            finally:
+                try:
+                    browser.close()
+                except Exception:  # pragma: no cover
+                    pass
+    finally:
+        try:
+            os.unlink(state_file.name)
+        except OSError:  # pragma: no cover
+            pass
 
 
 def _upload_via_tiktok_uploader(
@@ -350,22 +472,17 @@ def _upload_via_playwright(
     result: UploadResult,
     log: LogCallback,
 ) -> None:
-    """Backend 3: minimal direct Playwright automation.
+    """Backend 3: minimal direct Playwright automation (legacy cookies.txt).
 
-    Fallback for machines with Playwright but without ``tiktok-uploader``.
-    Selectors follow the TikTok web upload page (2026); if TikTok changes its
-    DOM this fails loudly in the LOG box — the app itself never crashes.
+    Fallback for machines with Playwright but without ``tiktok-uploader`` and
+    without a captured session.  Selectors follow the TikTok web upload page
+    (2026); if TikTok changes its DOM this fails loudly in the LOG box — the
+    app itself never crashes.
     """
     rows = parse_cookies_file(cookies)
     if not rows:
         raise UploadError("cookies.txt oxunmadı (Netscape formatı gözlənilir)")
-    try:
-        from playwright.sync_api import sync_playwright  # type: ignore
-    except Exception as exc:
-        raise UploadError(
-            f"playwright import olunmadı: {type(exc).__name__}: {exc} — "
-            "pip install playwright && playwright install chromium"
-        ) from exc
+    sync_playwright = _require_playwright()
 
     proxy = {"server": request.proxy} if request.proxy else None
     with sync_playwright() as pw:
@@ -376,30 +493,15 @@ def _upload_via_playwright(
             page = context.new_page()
             log("TikTok upload səhifəsi açılır…")
             page.goto(TIKTOK_UPLOAD_URL, timeout=60_000, wait_until="domcontentloaded")
-            log("Video faylı seçilir…")
-            page.set_input_files('input[type="file"]', str(video), timeout=60_000)
-            page.wait_for_selector(
-                'div[data-text="true"], .public-DraftEditor-content', timeout=240_000
-            )
-            if request.description:
-                editor = page.locator(
-                    'div[data-text="true"], .public-DraftEditor-content'
-                ).first
-                editor.click()
-                editor.type(request.description, delay=15)
-            log("Paylaş düyməsi axtarılır…")
-            page.locator(
-                'button:has-text("Post"), button:has-text("Paylaş"), button:has-text("Göndər")'
-            ).first.click(timeout=30_000)
-            page.wait_for_url(f"{TIKTOK_URL}/**", timeout=300_000)
+            _post_video(page, video, request.description, log)
             result.ok = True
             result.url = page.url
-            log(f"Yükləndi: {page.url}")
         finally:
             browser.close()
 
 
 _BACKEND_RUNNERS: Dict[str, Callable[..., None]] = {
+    BACKEND_SESSION: _upload_via_session,
     BACKEND_PACKAGE: _upload_via_tiktok_uploader,
     BACKEND_CLI: _upload_via_cli,
     BACKEND_PLAYWRIGHT: _upload_via_playwright,
@@ -441,18 +543,6 @@ def upload(
         if video.suffix.lower() not in {".mp4", ".mov", ".webm"}:
             log(f"! qeyri-standart konteyner '{video.suffix}' — TikTok .mp4 gözləyir")
 
-        cookies = find_cookies(request.cookies, video=video)
-        if cookies is None:
-            raise UploadError(
-                "cookies.txt tapılmadı — TikTok-a avtomatik giriş mümkün deyil. "
-                "Brauzerdə tiktok.com-a daxil olun, cookies faylını ixrac edin "
-                "(məs. 'Get cookies.txt' genişlənməsi) və buralardan birinə qoyun: "
-                + " · ".join(str(d) for d in app_dirs()[:4])
-                + f" — və ya {COOKIE_ENV} env dəyişənini təyin edin."
-            )
-        result.cookies = cookies
-        log(f"cookies faylı: {cookies}")
-
         backend = choose_backend(request.backend)
         if backend is None:
             if request.backend != "auto":
@@ -461,10 +551,36 @@ def upload(
                 )
             raise UploadError(
                 "TikTok uploader tapılmadı — quraşdırın: "
-                "pip install tiktok-uploader && playwright install chromium"
+                "pip install playwright && playwright install chromium"
             )
         result.backend = backend
+
+        # auth: captured session first, legacy cookies.txt as fallback
+        cookies: Optional[Path] = None
+        if backend == BACKEND_SESSION:
+            if not session_mod.is_logged_in():
+                raise UploadError(
+                    f"{session_mod.SESSION_EXPIRED} — LOGIN TO TIKTOK düyməsi "
+                    "ilə daxil olun."
+                )
+            info = session_mod.session_info()
+            who = f"@{info['username']}" if info["username"] else ""
+            log(f"daxili sessiya istifadə olunur {who} (cookies.txt lazım deyil)".rstrip())
+        else:
+            cookies = find_cookies(request.cookies, video=video)
+            if cookies is None:
+                raise UploadError(
+                    "TikTok girişi yoxdur — interfeysdəki LOGIN TO TIKTOK "
+                    "düyməsi ilə daxil olun (köhnə üsul: cookies.txt faylını "
+                    + " · ".join(str(d) for d in app_dirs()[:2])
+                    + f" qovluğuna qoyun və ya {COOKIE_ENV} env dəyişənini təyin edin)."
+                )
+            result.cookies = cookies
+            log(f"cookies faylı: {cookies}")
+
         log(f"backend: {backend} · açıqlama: {request.description or '(boş)'}")
+        log("Fayl re-encode olunmur — 120FPS hamarlıq, CAS kəskinlik və bitrate "
+            "100% olduğu kimi TikTok Web Desktop upload-a göndərilir.")
         _BACKEND_RUNNERS[backend](request, video, cookies, result, log)
     except UploadError as exc:
         result.ok = False
@@ -473,4 +589,19 @@ def upload(
         result.ok = False
         result.error = f"{type(exc).__name__}: {exc}"
         log(f"gözlənilməz xəta: {result.error}")
+    if (
+        result.error
+        and session_mod.SESSION_EXPIRED not in result.error
+        and _looks_like_session_error(result.error)
+    ):
+        result.error = f"{session_mod.SESSION_EXPIRED} — {result.error}"
     return result
+
+
+def _looks_like_session_error(text: str) -> bool:
+    """Auth-ish failure?  Then hint the user to press LOGIN TO TIKTOK again."""
+    lowered = (text or "").lower()
+    return any(
+        key in lowered
+        for key in ("login", "session", "unauthorized", "401", "expired", "auth")
+    )

@@ -13,11 +13,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from reelforge import session as session_mod
 from reelforge import upload as upload_mod
 from reelforge.uistate import UIState, status_text
 from reelforge.upload import (
     BACKEND_CLI,
     BACKEND_PACKAGE,
+    BACKEND_SESSION,
     COOKIE_ENV,
     UploadRequest,
     choose_backend,
@@ -34,10 +36,12 @@ from reelforge.upload import (
 
 @pytest.fixture(autouse=True)
 def _no_real_backends(monkeypatch):
-    """No cookies env, no CLI on PATH, no optional packages on the test box."""
+    """No cookies env, no CLI on PATH, no packages, no captured session."""
     monkeypatch.delenv(COOKIE_ENV, raising=False)
     monkeypatch.setattr(upload_mod.shutil, "which", lambda _name: None)
     monkeypatch.setattr(upload_mod, "_module_present", lambda _name: False)
+    monkeypatch.setattr(session_mod, "is_logged_in", lambda: False)
+    monkeypatch.setattr(session_mod, "load_session", lambda: None)
 
 
 @pytest.fixture
@@ -127,9 +131,15 @@ def test_parse_cookies_file_netscape(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-def test_available_backends_lists_all_three():
+def test_available_backends_lists_all_four_session_first():
     names = [name for name, _ok, _reason in upload_mod.available_backends()]
-    assert names == [BACKEND_PACKAGE, BACKEND_CLI, "playwright"]
+    assert names == [BACKEND_SESSION, BACKEND_PACKAGE, BACKEND_CLI, "playwright"]
+
+
+def test_session_backend_first_when_logged_in(monkeypatch):
+    monkeypatch.setattr(session_mod, "is_logged_in", lambda: True)
+    monkeypatch.setattr(upload_mod, "_module_present", lambda name: name == "playwright")
+    assert choose_backend() == BACKEND_SESSION
 
 
 def test_choose_backend_auto_picks_first_available(monkeypatch):
@@ -163,13 +173,15 @@ def test_upload_missing_file(video, monkeypatch):
     assert "tapılmadı" in res.error
 
 
-def test_upload_missing_cookies(video, monkeypatch):
+def test_upload_missing_auth_mentions_login_button(video, monkeypatch):
     monkeypatch.setattr(upload_mod, "app_dirs", lambda: [video.parent / "empty"])
     monkeypatch.chdir(video.parent)
+    monkeypatch.setattr(
+        upload_mod, "_module_present", lambda name: name == "tiktok_uploader")
     res = upload(UploadRequest(path=video, description="#fyp"))
     assert res.ok is False
+    assert "LOGIN TO TIKTOK" in res.error
     assert "cookies.txt" in res.error
-    assert COOKIE_ENV in res.error
 
 
 def test_upload_missing_backend_is_reported(video, tmp_path, monkeypatch):
@@ -177,7 +189,61 @@ def test_upload_missing_backend_is_reported(video, tmp_path, monkeypatch):
     monkeypatch.setattr(upload_mod, "app_dirs", lambda: [video.parent])
     res = upload(UploadRequest(path=video))
     assert res.ok is False
-    assert "pip install tiktok-uploader" in res.error
+    assert "pip install playwright" in res.error
+
+
+def test_upload_uses_captured_session_headless(video, monkeypatch):
+    """Auto-Session Capture: no cookies.txt needed, session backend wins."""
+    monkeypatch.setattr(session_mod, "is_logged_in", lambda: True)
+    monkeypatch.setattr(session_mod, "session_info",
+                        lambda: {"logged_in": True, "username": "reeluser",
+                                 "expired": False, "path": video})
+    monkeypatch.setattr(
+        upload_mod, "_module_present", lambda name: name == "playwright")
+
+    def fake_session_runner(request, _video, cookies, result, log):
+        assert cookies is None          # legacy cookies path untouched
+        result.ok = True
+        result.url = "https://www.tiktok.com/@reeluser/video/9"
+        log("headless upload tamam")
+
+    monkeypatch.setitem(upload_mod._BACKEND_RUNNERS, BACKEND_SESSION, fake_session_runner)
+    res = upload(UploadRequest(path=video, description="#fyp"))
+    assert res.ok is True
+    assert res.backend == BACKEND_SESSION
+    assert res.cookies is None
+    assert any("daxili sessiya istifadə olunur @reeluser" in line for line in res.logs)
+    assert any("re-encode olunmur" in line for line in res.logs)
+
+
+def test_upload_expired_session_is_reported(video, monkeypatch):
+    monkeypatch.setattr(session_mod, "is_logged_in", lambda: True)
+    monkeypatch.setattr(session_mod, "session_info",
+                        lambda: {"logged_in": True, "username": "",
+                                 "expired": False, "path": video})
+    monkeypatch.setattr(session_mod, "load_session", lambda: None)  # vanished
+    monkeypatch.setattr(
+        upload_mod, "_module_present", lambda name: name == "playwright")
+    res = upload(UploadRequest(path=video))
+    assert res.ok is False
+    assert "Sessiya yenilənməlidir" in res.error
+    assert "LOGIN TO TIKTOK" in res.error
+
+
+def test_session_like_failure_gets_renew_hint(video, monkeypatch):
+    (video.parent / "cookies.txt").write_text("netscape")
+    monkeypatch.setattr(upload_mod, "app_dirs", lambda: [video.parent])
+    monkeypatch.setattr(
+        upload_mod, "available_backends", lambda: [(BACKEND_PACKAGE, True, "test")])
+
+    def http_401(request, _v, _c, result, log):
+        raise RuntimeError("server said 401 Unauthorized")
+
+    monkeypatch.setitem(upload_mod._BACKEND_RUNNERS, BACKEND_PACKAGE, http_401)
+    res = upload(UploadRequest(path=video))
+    assert res.ok is False
+    assert res.error.startswith("Sessiya yenilənməlidir")
+    assert "401" in res.error
 
 
 def test_upload_happy_path_logs_everything(video, monkeypatch):

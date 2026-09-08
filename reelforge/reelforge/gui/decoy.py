@@ -21,7 +21,8 @@ Layout (top -> bottom, single 520px column)
     |  RESOLUTION       [ SOURCE v ]                           |
     |  CODEC            [ H.264 | NVENC | HEVC ]               |
     |  OUTPUT           [ /path/to/out      ] [ BROWSE ]       |
-    |  TIKTOK           [UPLOAD TO TIKTOK switch]              |
+    |  TIKTOK           [AUTO-UPLOAD TO TIKTOK switch]         |
+    |  HESAB            [ LOGIN TO TIKTOK ] LOGGED IN ✓ @user  |
     |  DESCRIPTION      [ #fyp #120fps caption… ]              |
     +----------------------------------------------------------+
     |  [##############----------------] 48%                    |  export zone
@@ -60,6 +61,7 @@ from ..models import ProgressInfo, ensure_video_files
 from ..pipeline import ReelForge
 from ..toolchain import ToolchainError
 from ..upload import UploadRequest
+from .. import session as session_mod
 from .. import upload as upload_mod
 from ..uistate import (
     CODEC_CHOICES,
@@ -138,6 +140,7 @@ class DecoyApp(ctk.CTk):
         self.dnd_enabled = dnd.enable_on(self)
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.worker: Optional[threading.Thread] = None
+        self.login_worker: Optional[threading.Thread] = None
         self.source: Optional[Path] = None
         self.tier: str = "ultra120"
         self.tier_cards: Dict[str, TierCard] = {}
@@ -159,8 +162,8 @@ class DecoyApp(ctk.CTk):
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         self.title(f"{APP_TITLE} — {APP_VERSION}")
-        self.geometry("520x940")
-        self.minsize(480, 840)
+        self.geometry("520x980")
+        self.minsize(480, 880)
         self.configure(fg_color=DECOY["bg"])
         self.grid_columnconfigure(0, weight=1)
         for row in range(6):
@@ -324,14 +327,27 @@ class DecoyApp(ctk.CTk):
         # tiktok auto-upload switch
         r = row(6, "TIKTOK")
         self.tiktok_switch = ctk.CTkSwitch(
-            r, text="UPLOAD TO TIKTOK", variable=self.var_tiktok, onvalue=True,
+            r, text="AUTO-UPLOAD TO TIKTOK", variable=self.var_tiktok, onvalue=True,
             offvalue=False, font=DECOY_FONTS["small"],
             text_color=DECOY["text_dim"], progress_color=DECOY["accent"],
             fg_color=DECOY["line"], command=self._tiktok_toggled)
         self.tiktok_switch.grid(row=0, column=1, sticky="w")
 
+        # tiktok account: one-click login + session status
+        r = row(7, "HESAB")
+        self.login_btn = ctk.CTkButton(
+            r, text="LOGIN TO TIKTOK", width=142, height=26, corner_radius=SHARP,
+            fg_color=DECOY["accent"], hover_color=DECOY["accent_hi"],
+            text_color="#ffffff", font=DECOY_FONTS["small"],
+            command=self.login_to_tiktok)
+        self.login_btn.grid(row=0, column=1, sticky="w")
+        self.session_label = ctk.CTkLabel(
+            r, text="GİRİŞ YOXDUR", font=DECOY_FONTS["small"],
+            text_color=DECOY["text_dim"], width=170, anchor="w")
+        self.session_label.grid(row=0, column=2, sticky="w", padx=(10, 0))
+
         # tiktok description / hashtags
-        r = row(7, "DESCRIPTION")
+        r = row(8, "DESCRIPTION")
         self.description_entry = ctk.CTkEntry(
             r, textvariable=self.var_description, corner_radius=SHARP,
             fg_color=DECOY["panel_2"], border_color=DECOY["line"],
@@ -340,7 +356,8 @@ class DecoyApp(ctk.CTk):
         self.description_entry.grid(row=0, column=1, sticky="ew")
 
         self._blur_toggled()
-        self._tiktok_toggled()
+        self.description_entry.configure(state="disabled")
+        self._refresh_session_label()
 
     def _build_export(self) -> None:
         panel = self._section(4, "EXPORT")
@@ -449,19 +466,54 @@ class DecoyApp(ctk.CTk):
         if not enabled:
             self.log("TIKTOK: avtomatik yükləmə söndürüldü.")
             return
-        self.log("TIKTOK: render bitəndə fayl olduğu kimi (keyfiyyət itkisiz) yüklənəcək.")
-        cookies = upload_mod.find_cookies(video=self.source)
-        if cookies is None:
-            self.log("  ! cookies.txt tapılmadı — yükləmə alınmayacaq. Brauzerdən "
-                     "cookies ixrac edib proqram qovluğuna qoyun.")
+        self.log("TIKTOK: render bitəndə fayl olduğu kimi (keyfiyyət itkisiz) "
+                 "headless yüklənəcək — brauzer açılmayacaq.")
+        info = session_mod.session_info()
+        if info["logged_in"]:
+            who = f"@{info['username']}" if info["username"] else ""
+            self.log(f"  sessiya: LOGGED IN ✓ {who}".rstrip())
+        elif info["expired"]:
+            self.log(f"  ! {session_mod.SESSION_EXPIRED} — LOGIN TO TIKTOK "
+                     "düyməsini basın.")
         else:
-            self.log(f"  cookies: {cookies}")
+            self.log("  ! giriş yoxdur — LOGIN TO TIKTOK düyməsini basın.")
         backend = upload_mod.choose_backend()
         if backend is None:
             self.log("  ! uploader backend yoxdur — quraşdırın: "
-                     "pip install tiktok-uploader && playwright install chromium")
+                     "pip install playwright && playwright install chromium")
         else:
             self.log(f"  backend: {backend}")
+
+    # ------------------------------------------------------------ tiktok login
+    def _refresh_session_label(self) -> None:
+        info = session_mod.session_info()
+        if info["logged_in"]:
+            who = f"@{info['username']}" if info["username"] else ""
+            self.session_label.configure(
+                text=f"LOGGED IN ✓ {who}".strip(), text_color=DECOY["ok"])
+        elif info["expired"]:
+            self.session_label.configure(
+                text="SESSİYA BİTİB", text_color=DECOY["warn"])
+        else:
+            self.session_label.configure(
+                text="GİRİŞ YOXDUR", text_color=DECOY["text_dim"])
+
+    def login_to_tiktok(self) -> None:
+        """One-click Auto-Session Capture: internal Chromium -> save -> close."""
+        if self.login_worker and self.login_worker.is_alive():
+            return
+        self.login_btn.configure(state="disabled")
+        self.session_label.configure(text="Giriş gözlənilir…",
+                                     text_color=DECOY["cyan"])
+        self.log("TIKTOK: daxili brauzer pəncərəsi açılır — TikTok-a daxil olun. "
+                 "Giriş bitən kimi sessiya avtomatik saxlanılıb pəncərə bağlanacaq.")
+        self.login_worker = threading.Thread(target=self._login_work, daemon=True)
+        self.login_worker.start()
+
+    def _login_work(self) -> None:
+        result = session_mod.capture_session(
+            log_callback=lambda msg: self.events.put(("log", "TIKTOK · " + msg)))
+        self.events.put(("login-done", result))
 
     # ---------------------------------------------------------------- state
     def collect_state(self) -> UIState:
@@ -494,6 +546,9 @@ class DecoyApp(ctk.CTk):
             self.log("TIKTOK: export bitəndə avtomatik yüklənəcək"
                      + (f" · açıqlama: {state.tiktok_description}"
                         if state.tiktok_description else " · açıqlama boş"))
+            if not session_mod.is_logged_in():
+                self.log("  ! xəbərdarlıq: sessiya yoxdur — yükləmə alınmayacaq. "
+                         "LOGIN TO TIKTOK düyməsini basın.")
 
         self.engine.log_callback = self.log
         self.engine.progress_callback = self.on_progress
@@ -515,9 +570,10 @@ class DecoyApp(ctk.CTk):
             if result.ok and result.succeeded:
                 out = result.succeeded[0]
                 self.events.put(("log", f"Fayl: {out.path}"))
+                self.events.put(("log", "Render Bitti ✓"))
                 upload_req = state.upload_request(out.path) if state else None
                 if upload_req is not None:
-                    # switch ON -> render bitən kimi avtomatik yükləmə
+                    # switch ON -> render bitən kimi avtomatik headless yükləmə
                     self.events.put(("upload", "start"))
                     ok, _detail = self._upload_to_tiktok(upload_req)
                     self.events.put((
@@ -537,7 +593,9 @@ class DecoyApp(ctk.CTk):
     def _upload_to_tiktok(self, request: UploadRequest) -> Tuple[bool, str]:
         """Post the rendered file as-is; every failure lands in the LOG box."""
         self.events.put((
-            "log", "TIKTOK: yükləmə başlayır (fayl olduğu kimi göndərilir, re-encode yoxdur)…"))
+            "log",
+            "TikTok-a yüklənir… (headless — heç bir brauzer açılmır; fayl "
+            "re-encode olunmur: 120FPS/kəskinlik/bitrate 100% qorunur)"))
         try:
             result = self.engine.upload(request)
         except Exception as exc:  # upload() özü atmır — bu sadəcə sığortadır
@@ -548,12 +606,14 @@ class DecoyApp(ctk.CTk):
         for line in result.logs:
             self.events.put(("log", "TIKTOK · " + line))
         if result.ok:
-            self.events.put(("log", f"TIKTOK: uğurla yükləndi → {result.url}"))
+            self.events.put(("log", f"TikTok ✓ uğurla yükləndi → {result.url}"))
             self.events.put(("upload", "done"))
             return True, result.url
         detail = result.error or "naməlum xəta"
         self.events.put(("log", "TIKTOK XƏTA: " + detail))
         self.events.put(("upload", "error"))
+        if session_mod.SESSION_EXPIRED in detail:
+            self.events.put(("session-expired", None))
         return False, detail
 
     def cancel_export(self) -> None:
@@ -595,6 +655,23 @@ class DecoyApp(ctk.CTk):
                         self.status.configure(text="TikTok-a yükləndi ✓")
                     else:
                         self.status.configure(text="TikTok xətası — LOG-a baxın")
+                elif kind == "login-done":
+                    capture = payload
+                    self.login_btn.configure(state="normal")
+                    if capture.ok:
+                        who = f"@{capture.username}" if capture.username else ""
+                        self.session_label.configure(
+                            text=f"LOGGED IN ✓ {who}".strip(), text_color=DECOY["ok"])
+                        self.log("TIKTOK: sessiya təhlükəsiz faylda saxlanıldı — "
+                                 "pəncərə avtomatik bağlandı. Artıq export bitəndə "
+                                 "yükləmə headless gedəcək.")
+                    else:
+                        self.session_label.configure(
+                            text="GİRİŞ ALINMADI", text_color=DECOY["error"])
+                        self.log("TIKTOK XƏTA: " + str(capture.error))
+                elif kind == "session-expired":
+                    self.session_label.configure(
+                        text="SESSİYA BİTİB", text_color=DECOY["warn"])
                 elif kind == "done":
                     self.progress.set(1.0)
                     self.status.configure(text=str(payload))

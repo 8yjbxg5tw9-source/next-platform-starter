@@ -286,45 +286,61 @@ Proqram elə qurulub ki, istifadəçidə **Python/FFmpeg olmadan** tək `.exe` i
 5. **Antivirus false-positive** — bəzi AV-lər onefile PyInstaller-ə reaksiya verir; `.exe`-ni whitelist edin.
 6. **tkinterdnd2 (drag-drop) könüllüdür** — wheel qurulmasa belə proqram açılır, sadəcə sürüklə-burax əvəzinə "SELECT VIDEO" işləyir.
 
-## 8. TikTok-a avtomatik yükləmə (opsional)
+## 8. TikTok-a avtomatik yükləmə — Auto-Session Capture (opsional)
 
-Export bitən kimi fayl **olduğu kimi** (re-encode olmadan, keyfiyyət itkisiz)
-TikTok-a göndərilə bilər.
+Brauzer genişlənməsiz, `cookies.txt` faylsız, terminal əmrsiz: **bir düymə**.
 
 ### Quraşdırma (bir dəfə)
 
 ```
-pip install tiktok-uploader
+pip install playwright
 playwright install chromium
 ```
 
-### Sessiya (cookies) — hər hesab üçün bir dəfə
+### Giriş — LOGIN TO TIKTOK (hər hesab üçün bir dəfə)
 
-1. Brauzerdə `tiktok.com`-a daxil olun.
-2. "Get cookies.txt" genişlənməsi ilə cookies faylını ixrac edin.
-3. `cookies.txt`-ni **proqram qovluğuna** (exe-nin yanına), **videonun yanına**
-   qoyun və ya `REELFORGE_TIKTOK_COOKIES` env dəyişənini təyin edin.
+1. Decoy pəncərəsində **HESAB → LOGIN TO TIKTOK** düyməsini basın.
+2. Daxili Chromium pəncərəsi açılır və `tiktok.com/login`-ə gedir.
+3. Hesabınıza daxil olun (QR / şifrə / 2FA — TikTok nə təklif edirsə;
+   proqram şifrəni görmür və kod soruşmur).
+4. Giriş olan kimi tətbiq sessiya cookie-lərini **avtomatik tutur**,
+   `~/.reelforge/tiktok_session.json` faylında (chmod 600) saxlayır,
+   profil adını oxuyur və **pəncərəni özü bağlayır**.
+5. İnterfeysdə `LOGGED IN ✓ @istifadəçiadı` görünür.
 
-### UI-da istifadə
+### İş axını
 
-Decoy pəncərəsində **TIKTOK → UPLOAD TO TIKTOK** switch-ini yandırın,
-**DESCRIPTION** sahəsinə açıqlama/hashtag yazın (`#fyp #120fps`) və
-`EXPORT / CONVERT` düyməsini basın. Render bitəndə worker thread avtomatik
-yükləməni başladır; bütün mərhələlər və xətalar LOG qutusuna yazılır.
-Xəta (cookies yoxdur, internet yoxdur, sessiya bitib) **proqramı çökmür** —
-mətn birbaşa LOG-da görünür.
+**TIKTOK → AUTO-UPLOAD TO TIKTOK** switch-ini yandırın, **DESCRIPTION**
+sahəsinə açıqlama/hashtag yazın (`#fyp #120fps`) və `EXPORT / CONVERT`-ə
+basın:
+
+1. Video 120 FPS render olunur → LOG: `Render Bitti ✓`
+2. Switch aktivdirsə tutulmuş sessiya ilə **headless** (heç bir brauzer
+   açılmadan) yükləmə başlayır → LOG: `TikTok-a yüklənir…`
+3. Uğurlu olduqda → LOG: `TikTok ✓ uğurla yükləndi → <link>`
+
+Sessiya vaxtı bitərsə proqram **çökmür**: LOG-da `Sessiya yenilənməlidir`
+yazılır, status `SESSİYA BİTİB` olur — LOGIN TO TIKTOK-a bir dəfə yenidən
+basmaq kifayətdir.
+
+### Keyfiyyət zəmanəti (anti-compression)
+
+Fayl **re-encode olunmur**: 120 FPS hamarlıq, CAS kəskinlik və export
+bitrate-i 100% olduğu kimi TikTok Web Desktop upload endpoint-inə
+göndərilir — mobil tətbiqin aqressiv sıxılmasının qarşısı bununla alınır.
 
 ### Backend-lər (avtomatik seçilir)
 
 | Backend | Nədir | Qeyd |
 |---|---|---|
-| `tiktok-uploader` | Python paketi (Playwright avtomatlaşdırması) | tövsiyə olunan |
-| `tiktok-uploader-cli` | PATH-dakı `tiktok-uploader` exe | **frozen .exe-də işləyən yol** |
-| `playwright` | birbaşa minimal avtomatlaşdırma | paket yoxdursa fallback |
+| `session` | LOGIN TO TIKTOK ilə tutulmuş sessiya (headless Playwright) | **əsas yol** |
+| `tiktok-uploader` | Python paketi (Playwright avtomatlaşdırması) | legacy cookies.txt ilə |
+| `tiktok-uploader-cli` | PATH-dakı `tiktok-uploader` exe | frozen .exe üçün |
+| `playwright` | birbaşa minimal avtomatlaşdırma | legacy cookies.txt ilə |
 
-Məhdudiyyətlər: giriş yalnız cookies ilə (şifrə+2FA yoxdur), sessiya vaxtı
-bitəndə cookies yenilənməlidir, TikTok web UI dəyişərsə selector-lar köhnələ
-bilər (xəta LOG-a düşür), yükləmə həddi ~4 GB.
+Məhdudiyyətlər: sessiya vaxtı TikTok tərəfindən bitirilə bilər (yenidən
+LOGIN lazımdır), TikTok web UI dəyişərsə selector-lar köhnələ bilər (xəta
+LOG-a düşür, crash yox), yükləmə həddi ~4 GB.
 
 ## 9. Fayl strukturu
 
@@ -344,7 +360,8 @@ reelforge/
 │   ├── encode.py          encode əmrinin qurulması (CRF/GOP/bt709/audio)
 │   ├── interpolate.py     RIFE (ncnn + VapourSynth) və minterpolate mühərrikləri
 │   ├── pipeline.py        Pipeline + ReelForge fasadı, QA verify
-│   ├── upload.py          TikTok-a avtomatik yükləmə (cookies, backend seçimi)
+│   ├── session.py         Auto-Session Capture (LOGIN TO TIKTOK, sessiya faylı)
+│   ├── upload.py          TikTok-a avtomatik yükləmə (sessiya, backend seçimi)
 │   ├── uistate.py         UI widget → preset/JobOptions xəritəsi (saf Python, testli)
 │   └── gui/               decoy.py (Decoy-stil UI) · app.py (studio UI) · theme.py · dnd.py
 └── tests/                 unit + real-ffmpeg e2e testləri
