@@ -21,3 +21,6 @@ build/
 *.mkv
 *.y4m
 *.png
+
+# lakin UI önizləmə mockup-ı repoda qalsın
+!docs/*.png
