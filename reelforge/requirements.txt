@@ -11,5 +11,10 @@ tkinterdnd2>=0.3.0 ; python_version >= "3.8"
 # ReelForge auto-detects it via imageio_ffmpeg.get_ffmpeg_exe().
 imageio-ffmpeg>=0.4.9 ; python_version >= "3.8"
 
+# Automatic TikTok upload after export (optional; GUI degrades gracefully).
+# After installing, also run:  playwright install chromium
+# tiktok-uploader>=1.0 ; python_version >= "3.9"
+# playwright>=1.40 ; python_version >= "3.9"
+
 # Tests
 pytest>=7.0

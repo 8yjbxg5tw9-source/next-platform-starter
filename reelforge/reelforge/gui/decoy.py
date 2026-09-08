@@ -21,6 +21,8 @@ Layout (top -> bottom, single 520px column)
     |  RESOLUTION       [ SOURCE v ]                           |
     |  CODEC            [ H.264 | NVENC | HEVC ]               |
     |  OUTPUT           [ /path/to/out      ] [ BROWSE ]       |
+    |  TIKTOK           [UPLOAD TO TIKTOK switch]              |
+    |  DESCRIPTION      [ #fyp #120fps caption… ]              |
     +----------------------------------------------------------+
     |  [##############----------------] 48%                    |  export zone
     |  Encoding…                        ETA 12s                |
@@ -42,7 +44,7 @@ import queue
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 try:
     import customtkinter as ctk
@@ -57,6 +59,8 @@ from tkinter import filedialog
 from ..models import ProgressInfo, ensure_video_files
 from ..pipeline import ReelForge
 from ..toolchain import ToolchainError
+from ..upload import UploadRequest
+from .. import upload as upload_mod
 from ..uistate import (
     CODEC_CHOICES,
     FPS_CHOICES,
@@ -146,6 +150,8 @@ class DecoyApp(ctk.CTk):
         self.var_resolution = ctk.StringVar(value=RESOLUTION_CHOICES[0])
         self.var_codec = ctk.StringVar(value=CODEC_CHOICES[0])
         self.var_outdir = ctk.StringVar(value="")
+        self.var_tiktok = ctk.BooleanVar(value=False)
+        self.var_description = ctk.StringVar(value="")
 
         self._build()
         self.after(90, self._pump)
@@ -153,8 +159,8 @@ class DecoyApp(ctk.CTk):
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         self.title(f"{APP_TITLE} — {APP_VERSION}")
-        self.geometry("520x860")
-        self.minsize(480, 760)
+        self.geometry("520x940")
+        self.minsize(480, 840)
         self.configure(fg_color=DECOY["bg"])
         self.grid_columnconfigure(0, weight=1)
         for row in range(6):
@@ -315,7 +321,26 @@ class DecoyApp(ctk.CTk):
                       font=DECOY_FONTS["small"], command=self.pick_outdir).grid(
             row=0, column=2, padx=(8, 0))
 
+        # tiktok auto-upload switch
+        r = row(6, "TIKTOK")
+        self.tiktok_switch = ctk.CTkSwitch(
+            r, text="UPLOAD TO TIKTOK", variable=self.var_tiktok, onvalue=True,
+            offvalue=False, font=DECOY_FONTS["small"],
+            text_color=DECOY["text_dim"], progress_color=DECOY["accent"],
+            fg_color=DECOY["line"], command=self._tiktok_toggled)
+        self.tiktok_switch.grid(row=0, column=1, sticky="w")
+
+        # tiktok description / hashtags
+        r = row(7, "DESCRIPTION")
+        self.description_entry = ctk.CTkEntry(
+            r, textvariable=self.var_description, corner_radius=SHARP,
+            fg_color=DECOY["panel_2"], border_color=DECOY["line"],
+            font=DECOY_FONTS["small"],
+            placeholder_text="#fyp #120fps  · açıqlama / hashtag")
+        self.description_entry.grid(row=0, column=1, sticky="ew")
+
         self._blur_toggled()
+        self._tiktok_toggled()
 
     def _build_export(self) -> None:
         panel = self._section(4, "EXPORT")
@@ -359,6 +384,7 @@ class DecoyApp(ctk.CTk):
         self.log_box.grid(row=1, column=0, sticky="nsew", padx=12, pady=(2, 10))
         panel.grid_rowconfigure(1, weight=1)
         self.log(self.engine.describe())
+        self.log(upload_mod.describe())
 
     # -------------------------------------------------------------- widgets
     def select_tier(self, tier_id: str) -> None:
@@ -417,6 +443,26 @@ class DecoyApp(ctk.CTk):
     def _fps_changed(self, _value: str) -> None:
         self.log(f"Output FPS: {self.var_fps.get()}")
 
+    def _tiktok_toggled(self) -> None:
+        enabled = bool(self.var_tiktok.get())
+        self.description_entry.configure(state="normal" if enabled else "disabled")
+        if not enabled:
+            self.log("TIKTOK: avtomatik yükləmə söndürüldü.")
+            return
+        self.log("TIKTOK: render bitəndə fayl olduğu kimi (keyfiyyət itkisiz) yüklənəcək.")
+        cookies = upload_mod.find_cookies(video=self.source)
+        if cookies is None:
+            self.log("  ! cookies.txt tapılmadı — yükləmə alınmayacaq. Brauzerdən "
+                     "cookies ixrac edib proqram qovluğuna qoyun.")
+        else:
+            self.log(f"  cookies: {cookies}")
+        backend = upload_mod.choose_backend()
+        if backend is None:
+            self.log("  ! uploader backend yoxdur — quraşdırın: "
+                     "pip install tiktok-uploader && playwright install chromium")
+        else:
+            self.log(f"  backend: {backend}")
+
     # ---------------------------------------------------------------- state
     def collect_state(self) -> UIState:
         outdir = self.var_outdir.get().strip()
@@ -429,6 +475,8 @@ class DecoyApp(ctk.CTk):
             resolution_choice=self.var_resolution.get(),
             codec_choice=self.var_codec.get(),
             output_dir=Path(outdir) if outdir else None,
+            tiktok_enabled=bool(self.var_tiktok.get()),
+            tiktok_description=self.var_description.get().strip(),
         )
 
     # ----------------------------------------------------------------- run
@@ -442,6 +490,10 @@ class DecoyApp(ctk.CTk):
         preset, options = state.build(self.engine.toolchain)
         for note in state.notes:
             self.log(note)
+        if state.tiktok_enabled:
+            self.log("TIKTOK: export bitəndə avtomatik yüklənəcək"
+                     + (f" · açıqlama: {state.tiktok_description}"
+                        if state.tiktok_description else " · açıqlama boş"))
 
         self.engine.log_callback = self.log
         self.engine.progress_callback = self.on_progress
@@ -452,20 +504,57 @@ class DecoyApp(ctk.CTk):
         self.log(f"EXPORT: {self.source.name} · {preset.label} · "
                  f"fps={options.fps_override or 'preset'} · codec={options.codec}")
         self.worker = threading.Thread(
-            target=self._work, args=(self.source, preset, options), daemon=True)
+            target=self._work, args=(self.source, preset, options, state), daemon=True)
         self.worker.start()
 
-    def _work(self, source: Path, preset, options) -> None:
+    def _work(self, source: Path, preset, options,
+              state: Optional[UIState] = None) -> None:
+        """Worker thread: render, then auto-upload to TikTok when requested."""
         try:
             result = self.engine.run(source, preset, options)
             if result.ok and result.succeeded:
                 out = result.succeeded[0]
-                self.events.put(("done", f"Done · {out.path.name}"))
                 self.events.put(("log", f"Fayl: {out.path}"))
+                upload_req = state.upload_request(out.path) if state else None
+                if upload_req is not None:
+                    # switch ON -> render bitən kimi avtomatik yükləmə
+                    self.events.put(("upload", "start"))
+                    ok, _detail = self._upload_to_tiktok(upload_req)
+                    self.events.put((
+                        "done",
+                        f"Done · {out.path.name} · TikTok {'✓' if ok else '✗ log-a bax'}",
+                    ))
+                else:
+                    self.events.put(("done", f"Done · {out.path.name}"))
             else:
+                if state is not None and state.tiktok_enabled:
+                    self.events.put(("log",
+                                     "TIKTOK: export uğursuz oldu — yükləmə atlandı."))
                 self.events.put(("error", result.error or "naməlum xəta"))
         except Exception as exc:  # pragma: no cover - defensive
             self.events.put(("error", f"{type(exc).__name__}: {exc}"))
+
+    def _upload_to_tiktok(self, request: UploadRequest) -> Tuple[bool, str]:
+        """Post the rendered file as-is; every failure lands in the LOG box."""
+        self.events.put((
+            "log", "TIKTOK: yükləmə başlayır (fayl olduğu kimi göndərilir, re-encode yoxdur)…"))
+        try:
+            result = self.engine.upload(request)
+        except Exception as exc:  # upload() özü atmır — bu sadəcə sığortadır
+            detail = f"{type(exc).__name__}: {exc}"
+            self.events.put(("log", "TIKTOK XƏTA: " + detail))
+            self.events.put(("upload", "error"))
+            return False, detail
+        for line in result.logs:
+            self.events.put(("log", "TIKTOK · " + line))
+        if result.ok:
+            self.events.put(("log", f"TIKTOK: uğurla yükləndi → {result.url}"))
+            self.events.put(("upload", "done"))
+            return True, result.url
+        detail = result.error or "naməlum xəta"
+        self.events.put(("log", "TIKTOK XƏTA: " + detail))
+        self.events.put(("upload", "error"))
+        return False, detail
 
     def cancel_export(self) -> None:
         self.engine.cancel()
@@ -499,6 +588,13 @@ class DecoyApp(ctk.CTk):
                              f"  {info.percent:4.1f}%")
                     self.eta_label.configure(
                         text=f"ETA {info.eta_seconds:.0f}s" if info.eta_seconds else "")
+                elif kind == "upload":
+                    if payload == "start":
+                        self.status.configure(text=status_text("upload"))
+                    elif payload == "done":
+                        self.status.configure(text="TikTok-a yükləndi ✓")
+                    else:
+                        self.status.configure(text="TikTok xətası — LOG-a baxın")
                 elif kind == "done":
                     self.progress.set(1.0)
                     self.status.configure(text=str(payload))

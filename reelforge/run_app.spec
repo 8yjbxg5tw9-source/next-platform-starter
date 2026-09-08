@@ -41,13 +41,25 @@ for package in ("customtkinter", "tkinterdnd2", "PIL", "reelforge"):
     binaries += b
     hiddenimports += h
 
+# Optional TikTok auto-upload.  Only bundled when installed on the build
+# machine; Playwright browsers cannot be bundled, so a frozen .exe usually
+# uses the `tiktok-uploader` CLI found on PATH instead (see README).
+try:
+    d, b, h = collect_all("tiktok_uploader")
+    datas += d
+    binaries += b
+    hiddenimports += h
+except Exception:
+    pass
+
 # ---- lazily imported modules PyInstaller's static analysis can miss ---------
 hiddenimports += [
     # reelforge submodules (some imported via importlib / inside functions)
     "reelforge", "reelforge.models", "reelforge.presets", "reelforge.toolchain",
     "reelforge.probe", "reelforge.filters", "reelforge.encode",
     "reelforge.interpolate", "reelforge.pipeline", "reelforge.uistate",
-    "reelforge.cli", "reelforge.gui", "reelforge.gui.decoy", "reelforge.gui.app",
+    "reelforge.upload", "reelforge.cli", "reelforge.gui",
+    "reelforge.gui.decoy", "reelforge.gui.app",
     "reelforge.gui.theme", "reelforge.gui.dnd",
     # tkinter pieces used at runtime
     "tkinter", "tkinter.ttk", "tkinter.filedialog", "tkinter.messagebox",

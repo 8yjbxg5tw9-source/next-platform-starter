@@ -286,7 +286,47 @@ Proqram elə qurulub ki, istifadəçidə **Python/FFmpeg olmadan** tək `.exe` i
 5. **Antivirus false-positive** — bəzi AV-lər onefile PyInstaller-ə reaksiya verir; `.exe`-ni whitelist edin.
 6. **tkinterdnd2 (drag-drop) könüllüdür** — wheel qurulmasa belə proqram açılır, sadəcə sürüklə-burax əvəzinə "SELECT VIDEO" işləyir.
 
-## 8. Fayl strukturu
+## 8. TikTok-a avtomatik yükləmə (opsional)
+
+Export bitən kimi fayl **olduğu kimi** (re-encode olmadan, keyfiyyət itkisiz)
+TikTok-a göndərilə bilər.
+
+### Quraşdırma (bir dəfə)
+
+```
+pip install tiktok-uploader
+playwright install chromium
+```
+
+### Sessiya (cookies) — hər hesab üçün bir dəfə
+
+1. Brauzerdə `tiktok.com`-a daxil olun.
+2. "Get cookies.txt" genişlənməsi ilə cookies faylını ixrac edin.
+3. `cookies.txt`-ni **proqram qovluğuna** (exe-nin yanına), **videonun yanına**
+   qoyun və ya `REELFORGE_TIKTOK_COOKIES` env dəyişənini təyin edin.
+
+### UI-da istifadə
+
+Decoy pəncərəsində **TIKTOK → UPLOAD TO TIKTOK** switch-ini yandırın,
+**DESCRIPTION** sahəsinə açıqlama/hashtag yazın (`#fyp #120fps`) və
+`EXPORT / CONVERT` düyməsini basın. Render bitəndə worker thread avtomatik
+yükləməni başladır; bütün mərhələlər və xətalar LOG qutusuna yazılır.
+Xəta (cookies yoxdur, internet yoxdur, sessiya bitib) **proqramı çökmür** —
+mətn birbaşa LOG-da görünür.
+
+### Backend-lər (avtomatik seçilir)
+
+| Backend | Nədir | Qeyd |
+|---|---|---|
+| `tiktok-uploader` | Python paketi (Playwright avtomatlaşdırması) | tövsiyə olunan |
+| `tiktok-uploader-cli` | PATH-dakı `tiktok-uploader` exe | **frozen .exe-də işləyən yol** |
+| `playwright` | birbaşa minimal avtomatlaşdırma | paket yoxdursa fallback |
+
+Məhdudiyyətlər: giriş yalnız cookies ilə (şifrə+2FA yoxdur), sessiya vaxtı
+bitəndə cookies yenilənməlidir, TikTok web UI dəyişərsə selector-lar köhnələ
+bilər (xəta LOG-a düşür), yükləmə həddi ~4 GB.
+
+## 9. Fayl strukturu
 
 ```
 reelforge/
@@ -304,6 +344,7 @@ reelforge/
 │   ├── encode.py          encode əmrinin qurulması (CRF/GOP/bt709/audio)
 │   ├── interpolate.py     RIFE (ncnn + VapourSynth) və minterpolate mühərrikləri
 │   ├── pipeline.py        Pipeline + ReelForge fasadı, QA verify
+│   ├── upload.py          TikTok-a avtomatik yükləmə (cookies, backend seçimi)
 │   ├── uistate.py         UI widget → preset/JobOptions xəritəsi (saf Python, testli)
 │   └── gui/               decoy.py (Decoy-stil UI) · app.py (studio UI) · theme.py · dnd.py
 └── tests/                 unit + real-ffmpeg e2e testləri

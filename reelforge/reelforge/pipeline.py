@@ -21,6 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 from . import encode as encode_mod
 from . import filters as filters_mod
 from . import interpolate as interp_mod
+from . import upload as upload_mod
 from .models import (
     JobOptions,
     JobResult,
@@ -582,6 +583,38 @@ class ReelForge:
 
     def cancel(self) -> None:
         self.cancel_event.set()
+
+    # -- TikTok upload ------------------------------------------------------
+    def upload(
+        self,
+        video: str | Path | upload_mod.UploadRequest,
+        description: str = "",
+        cookies: Optional[str | Path] = None,
+        *,
+        proxy: Optional[str] = None,
+        headless: bool = True,
+        timeout: float = 900.0,
+        backend: str = "auto",
+    ) -> upload_mod.UploadResult:
+        """Post a rendered file to TikTok **without re-encoding it**.
+
+        Safe to call from the GUI worker thread: :func:`reelforge.upload.upload`
+        converts every expected failure (missing cookies, no backend, network)
+        into ``UploadResult(ok=False, error=...)`` instead of raising.
+        """
+        if isinstance(video, upload_mod.UploadRequest):
+            request = video
+        else:
+            request = upload_mod.UploadRequest(
+                path=Path(video),
+                description=description,
+                cookies=Path(cookies) if cookies else None,
+                proxy=proxy,
+                headless=headless,
+                timeout=timeout,
+                backend=backend,
+            )
+        return upload_mod.upload(request, log_callback=self.log_callback)
 
     def _pipeline(self) -> Pipeline:
         return Pipeline(

@@ -18,6 +18,8 @@ Output FPS selector       60 / 120 / source -> ``JobOptions.fps_override``
 Sharpening switch         ON -> ``cas``, OFF -> sharpen disabled
 Resolution selector       source / 1080x1920 / 720x1280 / 1080x1080 (cover crop)
 Codec selector            H.264 / NVENC(GPU) / HEVC, with auto-fallback + note
+UPLOAD TO TIKTOK switch   after a successful export -> :mod:`reelforge.upload`
+Description entry         TikTok caption / hashtags for that upload
 ========================  ======================================================
 """
 
@@ -37,6 +39,7 @@ from .models import (
 )
 from .presets import Preset, Presets
 from .toolchain import Toolchain
+from .upload import UploadRequest
 
 # --------------------------------------------------------------------------- #
 # widget value tables (kept here so the GUI has a single source of truth)
@@ -134,6 +137,8 @@ def status_text(phase: str = "idle", *, engine: str = "", percent: float = 0.0) 
         return "Dry run — nothing written"
     if phase == "done":
         return "Done"
+    if phase == "upload":
+        return "Uploading to TikTok…"
     if phase == "verify":
         return "Verifying output…"
     return phase.title() + "…"
@@ -158,6 +163,8 @@ class UIState:
     codec_choice: str = "H.264 (CPU)"
     interpolation_choice: str = "auto"
     output_dir: Optional[Path] = None
+    tiktok_enabled: bool = False
+    tiktok_description: str = ""
     audio_bitrate: int = 320
     audio_sample_rate: int = 48000
     threads: int = 0
@@ -181,6 +188,15 @@ class UIState:
 
     def resolution(self) -> Tuple[Optional[int], Optional[int]]:
         return RESOLUTION_MAP.get(str(self.resolution_choice), (None, None))
+
+    def upload_request(self, video: str | Path) -> Optional[UploadRequest]:
+        """Upload settings for ``video`` — ``None`` when the switch is OFF."""
+        if not self.tiktok_enabled:
+            return None
+        return UploadRequest(
+            path=Path(video),
+            description=str(self.tiktok_description).strip(),
+        )
 
     # -- build ---------------------------------------------------------------
     def build(self, toolchain: Optional[Toolchain] = None) -> Tuple[Preset, JobOptions]:
