@@ -41,3 +41,19 @@ If your browser doesn't navigate to the site automatically, visit [localhost:888
 ## Resources
 
 - Check out the [Next.js on Netlify docs](https://docs.netlify.com/frameworks/next-js/overview/)
+
+## Python tooling in this repo
+
+[`reelforge/`](reelforge/) is a standalone Python application (unrelated to the
+Next.js site): a CustomTkinter + CLI studio that transcodes videos for TikTok /
+Instagram Reels / YouTube Shorts at 60-120 FPS with minimal compression
+(FFmpeg + RIFE interpolation, fixed GOP, bt709, CRF 17-20).
+
+```bash
+cd reelforge
+pip install -r requirements.txt
+python -m reelforge            # GUI
+python -m reelforge.cli --help # headless
+```
+
+Docs: [README](reelforge/README.md) · [ARCHITECTURE](reelforge/ARCHITECTURE.md) · [FFMPEG_REFERENCE](reelforge/FFMPEG_REFERENCE.md)

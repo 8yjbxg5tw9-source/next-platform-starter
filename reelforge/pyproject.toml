@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reelforge"
+version = "1.0.0"
+description = "60/120FPS minimal-compression video studio for TikTok / Reels / Shorts (FFmpeg + RIFE)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ReelForge" }]
+keywords = ["ffmpeg", "tiktok", "reels", "shorts", "rife", "interpolation", "120fps"]
+dependencies = []
+
+[project.optional-dependencies]
+gui = ["customtkinter>=5.2.0", "tkinterdnd2>=0.3.0"]
+ffmpeg = ["imageio-ffmpeg>=0.4.9"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+reelforge = "reelforge.cli:main"
+
+[tool.setuptools]
+packages = ["reelforge", "reelforge.gui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

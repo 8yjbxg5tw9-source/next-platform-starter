@@ -1,0 +1,15 @@
+# ReelForge — core has *no* hard Python dependencies (stdlib + ffmpeg binary).
+# These are for the GUI and for optional conveniences.
+
+# GUI (required for `python -m reelforge`)
+customtkinter>=5.2.0
+
+# Drag & drop into the GUI window (optional but recommended)
+tkinterdnd2>=0.3.0 ; python_version >= "3.8"
+
+# Bundled static ffmpeg — handy on Windows/macOS if ffmpeg is not installed.
+# ReelForge auto-detects it via imageio_ffmpeg.get_ffmpeg_exe().
+imageio-ffmpeg>=0.4.9 ; python_version >= "3.8"
+
+# Tests
+pytest>=7.0

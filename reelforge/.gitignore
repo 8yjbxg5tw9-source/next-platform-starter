@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# ReelForge çalışma dosyaları
+.reelforge_tmp/
+*_reelforge_*.log
+*_reelforge_*.json
+
+# Video çıktıları (örnekler repoya girmez)
+*.mp4
+*.mov
+*.mkv
+*.y4m
+*.png
