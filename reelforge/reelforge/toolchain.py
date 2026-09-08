@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -45,6 +46,29 @@ _COMMON_PATHS = (
     r"C:\ffmpeg\bin",
     r"C:\Program Files\ffmpeg\bin",
 )
+
+
+def runtime_dirs() -> List[Path]:
+    """Directories that may ship side-by-side binaries when running as an exe.
+
+    With PyInstaller a ``sys._MEIPASS`` folder holds the extracted ``datas``
+    (onefile) and the folder of ``sys.executable`` holds anything the user kept
+    next to the ``.exe`` (onedir or a manual ffmpeg drop-in).  We check both,
+    plus an ``ffmpeg/`` sub-folder in each.
+    """
+    dirs: List[Path] = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            dirs.append(Path(meipass))
+        try:
+            dirs.append(Path(sys.executable).resolve().parent)
+        except (OSError, AttributeError):  # pragma: no cover
+            pass
+    extra: List[Path] = []
+    for base in dirs:
+        extra.append(base / "ffmpeg")
+    return dirs + extra
 
 
 def _from_bundled_wheel(name: str) -> Optional[Path]:
@@ -81,6 +105,12 @@ def find_executable(name: str, override: Optional[str | os.PathLike] = None) -> 
     found = shutil.which(name)
     if found:
         return Path(found).resolve()
+
+    # bundled next to a frozen .exe (PyInstaller onefile/onedir or manual drop-in)
+    for base in runtime_dirs():
+        for candidate in (base / name, base / f"{name}.exe"):
+            if candidate.exists():
+                return candidate.resolve()
 
     for directory in _COMMON_PATHS:
         cand = Path(directory) / (f"{name}.exe" if os.name == "nt" else name)

@@ -248,7 +248,45 @@ yoxsa sadəcə dublikat edir?). ffmpeg tapılmayan mühitdə bu testlər `skip` 
 
 ---
 
-## 7. Fayl strukturu
+## 7. Tək `.exe` hazırlamaq (PyInstaller, Windows)
+
+Proqram elə qurulub ki, istifadəçidə **Python/FFmpeg olmadan** tək `.exe` işləsin.
+
+### Kod tərəfində hazır olanlar
+
+| Fayl | Rol |
+|---|---|
+| `run_app.py` | Launcher: `sys.path`-i düzəldir (`reelforge` exe içindən import olunur), `ffmpeg.exe`/`ffprobe.exe`-ni tapıb `PATH` + `REELFORGE_FFMPEG/FFPROBE`-ə qoşur, GUI-ni işə salır; xəta olsa `reelforge_launch.log` yazır (console=False-da belə səssiz qalmır). |
+| `run_app.spec` | `collect_all(customtkinter, tkinterdnd2, PIL, reelforge)` + `ffmpeg.exe/ffprobe.exe` datas → kök, `console=False`, tam `hiddenimports`. |
+| `reelforge/toolchain.py` | `runtime_dirs()` — frozen (`sys._MEIPASS` / exe qovluğu / `ffmpeg/` alt-qovluq) ffmpeg-i avtomatik tapır. |
+
+### Sizin addımlarınız (Windows-da, bir dəfə)
+
+1. **Python:** [python.org](https://www.python.org/downloads/) → 3.10/3.11 quraşdır, **"Add Python to PATH"** işarələ.
+2. **FFmpeg:** [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/) *release essentials* zip → aç → `bin/` içindən **`ffmpeg.exe`** və **`ffprobe.exe`**-ni `run_app.spec` ilə **eyni qovluğa** (`reelforge/`) at.
+3. Terminalda həmin qovluqda:
+   ```
+   pip install -r requirements.txt
+   pip install pyinstaller
+   ```
+4. **Tək əmr:**
+   ```
+   pyinstaller run_app.spec --noconfirm
+   ```
+5. Nəticə: `dist/ReelForge.exe` — tək fayl, konsolsuz, ffmpeg daxilində. İstifadəçiyə yalnız bu `.exe` kifayətdir.
+
+> `ffmpeg.exe`-ni `.exe`-nin **yanına** da qoysanız işləyir (`runtime_dirs` hər iki halı yoxlayır).
+
+### Kodun edə bilmədikləri (sizin etməli olduqlarınız)
+
+1. **`.exe`-ni bu mühitdə build etmək olmur** — PyInstaller platformaya bağlıdır; Windows `.exe`-si yalnız Windows-da yığılır (Linux/mac-dən cross-compile yoxdur).
+2. **FFmpeg binarlarını repo-da paylamaq olmur** — böyük və lisenziyalıdır; siz özünüz endirib qovluğa atırsınız (yuxarıda addım 2).
+3. **Python-u build üçün quraşdırmaq** — `.exe` işlədən istifadəçidə Python lazım deyil, amma *yığan* sizdə lazımdır.
+4. **Code-signing / SmartScreen** — imzasız PyInstaller `.exe`-də Windows "unknown publisher" xəbərdarlığı verə bilər; aradan qaldırmaq üçün öz sertifikatınızla imzalayın.
+5. **Antivirus false-positive** — bəzi AV-lər onefile PyInstaller-ə reaksiya verir; `.exe`-ni whitelist edin.
+6. **tkinterdnd2 (drag-drop) könüllüdür** — wheel qurulmasa belə proqram açılır, sadəcə sürüklə-burax əvəzinə "SELECT VIDEO" işləyir.
+
+## 8. Fayl strukturu
 
 ```
 reelforge/
