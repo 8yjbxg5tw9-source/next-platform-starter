@@ -35,6 +35,7 @@ from .models import (
     FitMode,
     InterpolationEngineKind,
     JobOptions,
+    SharpenMode,
     ensure_video_files,
 )
 from .pipeline import ReelForge
@@ -60,8 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-o", "--out", default=None, help="çıxış qovluğu")
     parser.add_argument(
-        "--codec", choices=["h264", "hevc"], default=None,
-        help="preset-in kodekini dəyiş (default: h264)",
+        "--codec", choices=["h264", "hevc", "nvenc"], default=None,
+        help="preset-in kodekini dəyiş (default: h264; nvenc = NVIDIA GPU)",
     )
     parser.add_argument("--crf", type=int, default=None, help="CRF 0-51 (preset-i üstələyir)")
     parser.add_argument(
@@ -85,6 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audio-channels", type=int, default=2, help="audio kanallar")
     parser.add_argument("--color-tag", default="bt709", choices=[c.value for c in ColorTag])
     parser.add_argument("--threads", type=int, default=0, help="0 = avtomatik")
+    parser.add_argument("--blur", type=int, default=None, metavar="0-100",
+                        help="motion blur gücü: 0=sönülü, 1-100=tmix kadr sayı artır")
+    parser.add_argument("--no-sharpen", action="store_true", help="kəskinlik filtri söndür")
+    parser.add_argument("--maxrate", type=int, default=None, help="VBV tavanı (kbps)")
+    parser.add_argument("--bufsize", type=int, default=None, help="VBV buffer (kbps)")
     parser.add_argument("--hwaccel", default=None, help="cuda | videotoolbox | ...")
     parser.add_argument("--no-dual", action="store_true", help="yalnız ən yüksək FPS variantı")
     parser.add_argument("--no-verify", action="store_true", help="QA yoxlanışını söndür")
@@ -98,7 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rife-model", default=None, help="RIFE model qovluğu")
     parser.add_argument("--diagnostics", action="store_true", help="mühit məlumatı")
     parser.add_argument("--list-presets", action="store_true", help="preset siyahısı")
-    parser.add_argument("--gui", action="store_true", help="qrafik interfeysi aç")
+    parser.add_argument("--gui", action="store_true", help="Decoy stilində qrafik interfeys")
+    parser.add_argument("--gui-advanced", action="store_true",
+                        help="geniş (3 sütunlu) qrafik interfeys")
     return parser
 
 
@@ -131,6 +139,20 @@ def _make_options(args: argparse.Namespace) -> JobOptions:
         opts.rife_executable = Path(args.rife)
     if args.rife_model:
         opts.rife_model_dir = Path(args.rife_model)
+
+    if args.blur is not None:
+        from .uistate import blur_strength_to_params
+
+        mode, frames, amount, oversample = blur_strength_to_params(args.blur)
+        opts.motion_blur_override = mode
+        opts.motion_blur_frames_override = frames
+        opts.motion_blur_amount_override = amount
+        opts.oversample_override = oversample
+    if args.no_sharpen:
+        opts.sharpen_override = SharpenMode.SHARPEN_OFF
+        opts.sharpen_amount_override = 0.0
+    opts.maxrate_override = args.maxrate
+    opts.bufsize_override = args.bufsize
     return opts
 
 
@@ -175,9 +197,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     if args.gui:
-        from .gui.app import launch
+        from .gui.decoy import launch
 
         return 0 if launch(ffmpeg=args.ffmpeg, ffprobe=args.ffprobe) else 1
+
+    if args.gui_advanced:
+        from .gui.app import launch as launch_advanced
+
+        return 0 if launch_advanced(ffmpeg=args.ffmpeg, ffprobe=args.ffprobe) else 1
 
     if not args.inputs:
         print("XƏTA: heç bir giriş faylı verilməyib. --help", file=sys.stderr)

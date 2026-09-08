@@ -10,8 +10,9 @@ məlumat axını necə gedir və yeni funksiya harada əlavə olunur.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  UI qatı                                                    │
-│  gui/app.py (CustomTkinter)   ·   cli.py (argparse)         │
+│  gui/decoy.py (Decoy-stil) · gui/app.py (studio) · cli.py   │
 │  → yalnız göstərir və hadisə göndərir, məntiq saxlamır      │
+│  → widget dəyərləri uistate.UIState-ə yığılır               │
 ├─────────────────────────────────────────────────────────────┤
 │  Orkestrasiya qatı                                          │
 │  pipeline.py  →  Pipeline.run()  /  ReelForge (fasad)       │
@@ -108,12 +109,23 @@ qaytarır — heç biri subprocess icra etmir.
 (`vspipe.stdout → ffmpeg.stdin`), stderr-i müvəqqəti fayla yığıb xəta halında göstərir.
 
 ### `gui/` — interfeys
-* `theme.py` — rəng/şrift tokenləri
+* `theme.py` — rəng/şrift tokenləri (`PALETTE` = studio, `DECOY` = tünd neon bənövşəyi)
 * `dnd.py` — `tkinterdnd2` **opsional**: `enable_on(root)` ilə CTk pəncərəsinə DnD
   yüklənir; paket yoxdursa drop-zone sadəcə kliklə açılır
-* `app.py` — `ReelForgeApp(ctk.CTk)`: 3 sütun (fayllar / presetlər / parametrlər) +
-  progress + log konsolu. İş **worker thread**-də gedir, UI yalnız
-  `queue.Queue` üzərindən `after(90ms)` ilə yenilənir (Tk thread-safe qalır).
+* `decoy.py` — `DecoyApp(ctk.CTk)`: tək sütunlu Decoy-stil pəncərə (header → drop
+  zone → 4 tier kartı → custom controls → export zone → log). Widget-lar
+  `collect_state()` ilə `UIState`-ə yığılır, `state.build(toolchain)` preset +
+  `JobOptions` qaytarır, iş worker thread-də gedir.
+* `app.py` — `ReelForgeApp(ctk.CTk)`: 3 sütunlu geniş UI (fayl siyahısı / presetlər /
+  bütün parametrlər), toplu emal üçün.
+
+### `uistate.py` — UI ↔ backend körpüsü
+Saf Python: `UIState` (widget snapshot) → `(Preset, JobOptions)`. Hər widget-ın
+hansı FFmpeg bayrağına çevrildiyi burada müəyyən olunur və `tests/test_uistate.py`
+tərəfindən yoxlanılır — buna görə də pəncərəni açmadan "düymə → əmr" əlaqəsini
+test etmək mümkündür. `blur_strength_to_params()` slayderi `tmix` kadr sayına,
+`resolve_codec()` isə NVENC/HEVC seçimini mövcud encoder-ə çevirir (yoxdursa
+H.264-ə düşür və qeyd yazır).
 
 ---
 

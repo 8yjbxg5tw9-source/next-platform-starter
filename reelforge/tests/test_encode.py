@@ -142,6 +142,70 @@ def test_missing_x264_raises():
         build(toolchain=make_toolchain(encoders={"aac"}))
 
 
+def test_nvenc_uses_cq_vbr_and_strict_gop():
+    command, notes = build(
+        toolchain=make_toolchain(encoders={"libx264", "aac", "hevc_nvenc"}),
+        codec=Codec.NVENC, profile="main", level="5.1",
+    )
+    text = joined(command)
+    assert "-c:v hevc_nvenc" in text
+    assert "-rc vbr" in text
+    assert "-cq 17" in text
+    assert "-b:v 0" in text
+    assert "-no-scenecut 1" in text
+    assert "-forced-idr 1" in text
+    assert "-tag:v hvc1" in text
+    assert "-g 60" in text
+    assert "-crf" not in text          # NVENC uses -cq, not -crf
+    assert any("GPU" in note for note in notes)
+
+
+def test_nvenc_falls_back_to_h264_nvenc_when_hevc_is_missing():
+    command, _ = build(
+        toolchain=make_toolchain(encoders={"libx264", "aac", "h264_nvenc"}),
+        codec=Codec.NVENC,
+    )
+    text = joined(command)
+    assert "-c:v h264_nvenc" in text
+    assert "-tag:v hvc1" not in text
+
+
+def test_nvenc_without_any_gpu_encoder_raises():
+    with pytest.raises(encode.EncodeError):
+        build(toolchain=make_toolchain(encoders={"libx264", "aac"}), codec=Codec.NVENC)
+
+
+def test_nvenc_preset_uses_legacy_names_on_old_ffmpeg():
+    command, _ = build(
+        toolchain=make_toolchain(major=4, minor=4,
+                                 encoders={"libx264", "aac", "hevc_nvenc"}),
+        codec=Codec.NVENC,
+    )
+    assert "-preset slow" in joined(command)
+
+
+def test_maxrate_and_bufsize_are_emitted():
+    from reelforge.models import RenderTarget
+
+    target = RenderTarget(
+        fps=60, suffix="studio", label="studio", crf=14, x264_preset="slow",
+        maxrate_kbps=50_000, bufsize_kbps=100_000,
+    )
+    plan = encode.build_encode_plan(
+        ffmpeg=__import__("pathlib").Path("ffmpeg"),
+        video_input="in.mp4",
+        output=__import__("pathlib").Path("out.mp4"),
+        target=target,
+        opts=JobOptions(),
+        toolchain=make_toolchain(),
+        has_audio=True,
+    )
+    text = joined(plan.command)
+    assert "-maxrate 50000k" in text
+    assert "-bufsize 100000k" in text
+    assert any("VBV" in note for note in plan.notes)
+
+
 # --------------------------------------------------------------------------- #
 # audio specifics
 # --------------------------------------------------------------------------- #

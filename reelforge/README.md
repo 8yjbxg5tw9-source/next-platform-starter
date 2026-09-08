@@ -57,16 +57,46 @@ libx264=True libx265=True minterpolate=True tmix=True cas=True mblur=False zscal
 ### GUI
 
 ```bash
-python -m reelforge
+python -m reelforge            # Decoy stilində tünd UI (default)
+python -m reelforge --advanced # 3 sütunlu "studio" UI (bütün CLI parametrləri)
 ```
 
-1. Videonu pəncərəyə **sürükləyib buraxın** (və ya "Fayl əlavə et")
-2. **Rejim** seçin (Fast / Safe / Ultra 120FPS / Motion Blur / Master)
-3. Parametrləri tənzimləyin (kodek, CRF, FPS, interpolyasiya, kadr ölçüsü, audio)
-4. **▶ Emalı başlat** — fayllar mənbə qovluğuna (və ya seçdiyiniz qovluğa) yazılır
+Decoy-stil pəncərə (520×860, `#0d0d0d` fon, `#7b2cbf` neon bənövşəyi, kəskin kənarlar):
+
+```
+┌────────────────────────────────────────────┐
+│ DECOY 120FPS PRO      v1.0.0 · RIFE AI     │ header (+ ffmpeg versiyası)
+├────────────────────────────────────────────┤
+│        DRAG & DROP VIDEO HERE              │ input zone
+│            [ SELECT VIDEO ]                │ (tkinterdnd2 varsa sürüklə-burax)
+│ clip.mp4 · 1080x1920 · 30.00fps · 12.4s    │
+├────────────────────────────────────────────┤
+│ RENDER TIER                                │
+│ [ TURBO TIER    ] [ SAFE MODE TIER ]       │ 2×2 tier kartları
+│ [ STUDIO TIER   ] [ ULTRA 120FPS   ]       │ (seçilən = bənövşəyi çərçivə)
+├────────────────────────────────────────────┤
+│ CUSTOM CONTROLS                            │
+│ MOTION BLUR  [switch] ────o──── 60·4 frames│
+│ SHARPENING   [switch] CAS filter           │
+│ OUTPUT FPS   [ 60 FPS | 120 FPS | SOURCE ] │
+│ RESOLUTION   [ SOURCE / 1080x1920 / ... ]  │
+│ CODEC        [ H.264 | NVENC | HEVC ]      │
+│ OUTPUT       [ /path ] [ BROWSE ]          │
+├────────────────────────────────────────────┤
+│ [################-----------] 62%          │ export zone
+│ Encoding…                       ETA 12s    │
+│ [      EXPORT / CONVERT      ] [ CANCEL ]  │
+├────────────────────────────────────────────┤
+│ LOG (kompakt konsol)                       │
+└────────────────────────────────────────────┘
+```
+
+Status mətni fazalara görə dəyişir: `Ready` → `Analyzing…` → `Extracting frames…`
+→ `Applying RIFE 120FPS…` → `Encoding…` → `Done`.
 
 * `tkinterdnd2` yoxdursa drag-and-drop söndürülür, proqram işləməyə davam edir.
-* "Əmrləri göstər" düyməsi icra olunacaq **dəqiq FFmpeg əmrlərini** log-a yazır.
+* Pəncərədə heç bir emal məntiqi yoxdur: widget-lar `UIState`-ə yığılır, qərarı
+  `presets/filters/encode` verir (bütün düymə→FFmpeg bayraq əlaqəsi test olunub).
 
 ### CLI
 
@@ -119,13 +149,36 @@ for out in result.succeeded:
 
 ## 3. Rejimler (presets)
 
-| Preset | FPS | Kodek | CRF | x264 | GOP | İnterpolyasiya | Blur |
+| Preset (tier) | FPS | Kodek | CRF | x264 | GOP | İnterpolyasiya | Blur |
 |---|---|---|---|---|---|---|---|
-| **Fast Conversion** | 60 | H.264 High | 20 | `fast` | 60 (1s) | yoxdur | yoxdur |
-| **Safe Mode (TikTok Bypass)** | 60 | H.264 High | 17 | `slow` | 60 (1s), `-sc_threshold 0` | yoxdur | CAS 0.5 |
-| **Ultra 120FPS Mode** | 60 + 120 | H.264 High | 18 / 17 | `slow` | 1s | RIFE → `minterpolate` | CAS 0.6 / 0.8 |
-| **Cinematic Motion Blur** | 60 | H.264 High | 18 | `slow` | 1s | `minterpolate` 2× | `tmix` 2 kadr |
-| **Archive Master** | mənbə FPS | H.264 High | 12 | `veryslow` | 2s | yoxdur | yoxdur |
+| **Turbo Tier** | 60 | H.264 High | 21 | `veryfast` | 60 (1s) | yoxdur | yoxdur |
+| **Safe Mode Tier** | 60 | H.264 High | 17 | `slow` | 60 (1s), `-sc_threshold 0` | yoxdur | CAS 0.5 |
+| **Studio Tier** | 60 | H.264 High | 14 | `slow` | 60 (1s) | yoxdur | CAS 0.6 |
+| **Ultra 120FPS Tier** | 60 + 120 | H.264 High | 18 / 17 | `slow` | 1s | RIFE → `minterpolate` | CAS 0.6 / 0.8 |
+| _Fast Conversion_ | 60 | H.264 High | 20 | `fast` | 60 (1s) | yoxdur | yoxdur |
+| _Cinematic Motion Blur_ | 60 | H.264 High | 18 | `slow` | 1s | `minterpolate` 2× | `tmix` 2 kadr |
+| _Archive Master_ | mənbə FPS | H.264 High | 12 | `veryslow` | 2s | yoxdur | yoxdur |
+
+İtalikdəki son üç preset CLI-dən əlçatandır (`--list-presets`); pəncərədəki tier
+seçimi ilk dördünü göstərir.
+
+**Studio Tier** əlavə olaraq VBV tavanı yazır: `-maxrate 50000k -bufsize 100000k`
+(yüksək bitrate, amma platformanın rədd etməyəcəyi qədər məhdud).
+
+**NVENC (GPU):** `hevc_nvenc -preset p6 -tune hq -rc vbr -cq <CRF> -b:v 0
+-no-scenecut 1 -forced-idr 1 -tag:v hvc1`. GPU tapılmırsa proqram avtomatik
+H.264-ə keçir və bunu log-a yazır.
+
+**Custom controls** birbaşa FFmpeg-ə belə təsir edir:
+
+| Widget | Nəticə |
+|---|---|
+| Motion blur OFF | zəncirdə blur filtri yoxdur |
+| Motion blur 1-25 / 26-50 / 51-75 / 76-100 | `tmix=frames=2 / 3 / 4 / 5` + 2× oversample |
+| Sharpening ON / OFF | `cas=strength=0.7` / filtsiz |
+| Output FPS 60 / 120 / SOURCE | `-r 60`, `-r 120` (`-g` da uyğunlaşır) / mənbə FPS |
+| Resolution 1080x1920 | `scale=…increase,crop=1080:1920,setsar=1` |
+| Codec H.264 / NVENC / HEVC | `libx264` / `hevc_nvenc` / `libx265 -tag:v hvc1` |
 
 ---
 
@@ -174,8 +227,12 @@ Proqram `-i frames_in -o frames_out -n <hədəf kadr sayı> -m <model>` şəklin
 
 ```bash
 pip install pytest
-pytest                       # 115 test
+pytest                       # 157 test
 ```
+
+`tests/test_uistate.py` pəncərənin hər widget-ını (tier, motion blur slayder,
+sharpening, FPS, resolution, codec) birbaşa FFmpeg əmr bayraqları ilə yoxlayır —
+GUI-ni açmadan "düymə → əmr" əlaqəsi test olunur.
 
 Testlərin bir hissəsi **real ffmpeg** ilə işləyir: klip yaradır, `safe`,
 `ultra120`, `motionblur`, `fast` presetlərini həqiqətən encode edir və nəticəni
@@ -184,7 +241,7 @@ hətta **qonşu kadrların piksel fərqi** (interpolyasiya həqiqətən yeni kad
 yoxsa sadəcə dublikat edir?). ffmpeg tapılmayan mühitdə bu testlər `skip` olunur.
 
 ```
-114 passed, 1 skipped in 64.65s
+156 passed, 1 skipped in 64.82s
 ```
 
 > 1 `skip` = GUI modulunun import testi: bu mühitdə `tkinter` (python3-tk) yoxdur.
@@ -202,14 +259,15 @@ reelforge/
 │   ├── __main__.py        python -m reelforge  (GUI, fallback CLI)
 │   ├── cli.py             argparse CLI
 │   ├── models.py          dataclass/enumerasiyalar (MediaInfo, RenderTarget, JobOptions ...)
-│   ├── presets.py         5 preset + build_targets()
+│   ├── presets.py         7 preset (4 UI tier + 3 CLI) + build_targets()
 │   ├── toolchain.py       ffmpeg/ffprobe tapılması, capability, FFmpegRunner (progress/cancel)
 │   ├── probe.py           ffprobe JSON + `ffmpeg -i` fallback, keyframe/frame analizi
 │   ├── filters.py         -vf zəncirinin qurulması
 │   ├── encode.py          encode əmrinin qurulması (CRF/GOP/bt709/audio)
 │   ├── interpolate.py     RIFE (ncnn + VapourSynth) və minterpolate mühərrikləri
 │   ├── pipeline.py        Pipeline + ReelForge fasadı, QA verify
-│   └── gui/               app.py · theme.py · dnd.py
+│   ├── uistate.py         UI widget → preset/JobOptions xəritəsi (saf Python, testli)
+│   └── gui/               decoy.py (Decoy-stil UI) · app.py (studio UI) · theme.py · dnd.py
 └── tests/                 unit + real-ffmpeg e2e testləri
 ```
 

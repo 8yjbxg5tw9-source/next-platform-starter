@@ -265,6 +265,15 @@ class Pipeline:
         )
         for note in plan.notes:
             runner.log(f"  · {note}")
+        # let the UI know which engine is doing the frame generation
+        self._progress(
+            ProgressInfo(
+                phase="prepare",
+                step=step_start,
+                total_steps=total_steps,
+                message=f"engine={plan.engine}",
+            )
+        )
 
         step = step_start
         # 1) pre-encode steps (PNG extraction / RIFE / vspipe)
@@ -447,7 +456,7 @@ class Pipeline:
             report.warnings.append(
                 f"Kadr sürəti {report.fps:.2f} (gözlənilən {report.expected_fps:g})"
             )
-        expected_codec = "h264" if str(target.codec) == "h264" else "hevc"
+        expected_codec = target.codec.probe_name
         if report.codec and report.codec != expected_codec:
             report.ok = False
             report.warnings.append(f"Kodek {report.codec} (gözlənilən {expected_codec})")

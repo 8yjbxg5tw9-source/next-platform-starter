@@ -143,6 +143,8 @@ def build_encode_plan(
 
 def _video_codec_args(target: RenderTarget, toolchain: Toolchain, notes: List[str]) -> List[str]:
     gop = target.gop
+    if target.codec == Codec.NVENC:
+        return _nvenc_args(target, toolchain, notes, gop)
     if target.codec == Codec.HEVC:
         if not toolchain.supports_hevc:
             raise EncodeError(
@@ -165,6 +167,7 @@ def _video_codec_args(target: RenderTarget, toolchain: Toolchain, notes: List[st
             args += ["-bf", str(target.b_frames)]
         if target.tune:
             args += ["-tune", target.tune]
+        args += _rate_control_args(target, notes)
         notes.append(
             f"HEVC/HEVC(hvc1) CRF {target.crf} · GOP {gop} ({gop / max(1, target.fps):.2f}s)"
         )
@@ -193,9 +196,73 @@ def _video_codec_args(target: RenderTarget, toolchain: Toolchain, notes: List[st
         "-x264-params",
         f"keyint={gop}:min-keyint={gop}:scenecut=0",
     ]
+    args += _rate_control_args(target, notes)
     notes.append(
         f"H.264 {target.profile}@{target.level} CRF {target.crf} "
         f"({target.x264_preset}) · GOP {gop} = {gop / max(1, target.fps):.2f}s sabit"
+    )
+    return args
+
+
+def _rate_control_args(target: RenderTarget, notes: List[str]) -> List[str]:
+    """Optional VBV ceiling (Studio tier) — keeps bitrate high but bounded."""
+    args: List[str] = []
+    if target.maxrate_kbps:
+        args += ["-maxrate", f"{int(target.maxrate_kbps)}k"]
+    if target.bufsize_kbps:
+        args += ["-bufsize", f"{int(target.bufsize_kbps)}k"]
+    if args:
+        notes.append(
+            f"VBV tavanı: maxrate {int(target.maxrate_kbps or 0)}k / "
+            f"bufsize {int(target.bufsize_kbps or 0)}k"
+        )
+    return args
+
+
+#: x264 preset name -> NVENC preset (FFmpeg 5+ uses p1..p7)
+_NVENC_PRESET_MAP = {
+    "ultrafast": "p1", "superfast": "p2", "veryfast": "p2", "faster": "p3",
+    "fast": "p4", "medium": "p5", "slow": "p6", "slower": "p7",
+    "veryslow": "p7", "placebo": "p7",
+}
+
+
+def _nvenc_args(target: RenderTarget, toolchain: Toolchain, notes: List[str], gop: int) -> List[str]:
+    """NVIDIA hardware path: ``hevc_nvenc`` when present, else ``h264_nvenc``."""
+    if toolchain.has_encoder("hevc_nvenc"):
+        encoder, profile, tag = "hevc_nvenc", "main", ["-tag:v", "hvc1"]
+    elif toolchain.has_encoder("h264_nvenc"):
+        encoder, profile, tag = "h264_nvenc", "high", []
+    else:
+        raise EncodeError(
+            "NVENC tapılmadı (hevc_nvenc/h264_nvenc yoxdur) — NVIDIA sürücüsü "
+            "və NVENC dəstəkli ffmpeg lazımdır, ya da H.264 seçin."
+        )
+
+    if toolchain.major >= 5:
+        preset = _NVENC_PRESET_MAP.get(target.x264_preset, "p6")
+    else:  # legacy nvenc preset names
+        preset = "slow" if target.x264_preset in {"slow", "slower", "veryslow"} else "fast"
+
+    args = [
+        "-c:v", encoder,
+        "-preset", preset,
+        "-tune", "hq",
+        "-rc", "vbr",
+        "-cq", str(target.crf),
+        "-b:v", "0",                    # quality-driven, no bitrate target
+        "-profile:v", profile,
+        "-pix_fmt", "yuv420p",
+        "-g", str(gop),
+        "-no-scenecut", "1",            # NVENC equivalent of sc_threshold=0
+        "-forced-idr", "1",
+        *tag,
+    ]
+    if target.b_frames >= 0:
+        args += ["-bf", str(target.b_frames)]
+    args += _rate_control_args(target, notes)
+    notes.append(
+        f"{encoder} ({preset}, tune=hq) CQ {target.crf} · GOP {gop} · GPU sürətləndirmə"
     )
     return args
 

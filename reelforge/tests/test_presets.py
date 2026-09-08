@@ -27,12 +27,41 @@ def info_at(fps: float, width: int = 1080, height: int = 1920, audio: bool = Tru
 
 
 def test_preset_ids_and_lookup():
-    assert Presets.choices() == ["fast", "safe", "ultra120", "motionblur", "master"]
+    assert Presets.choices() == [
+        "turbo", "safe", "studio", "ultra120", "fast", "motionblur", "master",
+    ]
     assert Presets.by_id("safe") is Presets.SAFE
     assert Presets.by_id("tiktok") is Presets.SAFE
     assert Presets.by_id("120") is Presets.ULTRA_120
+    assert Presets.by_id("turbo") is Presets.TURBO
+    assert Presets.by_id("studio") is Presets.STUDIO
     with pytest.raises(KeyError):
         Presets.by_id("nope")
+
+
+def test_turbo_is_the_fastest_path():
+    t = Presets.TURBO.build_targets(JobOptions(), info_at(30))[0]
+    assert (t.crf, t.x264_preset, t.fps) == (21, "veryfast", 60)
+    assert t.gop == 60
+    assert t.interpolation == InterpolationEngineKind.NONE
+
+
+def test_studio_is_the_high_bitrate_path():
+    t = Presets.STUDIO.build_targets(JobOptions(), info_at(30))[0]
+    assert (t.crf, t.x264_preset) == (14, "slow")
+    assert (t.maxrate_kbps, t.bufsize_kbps) == (50_000, 100_000)
+    assert t.sharpen == SharpenMode.CAS
+
+
+def test_nvenc_profile_and_level():
+    from reelforge.models import Codec
+
+    t = Presets.ULTRA_120.build_targets(
+        JobOptions(codec=Codec.NVENC), info_at(30), codec_override=Codec.NVENC
+    )
+    assert t[1].codec == Codec.NVENC
+    assert t[1].profile == "main"
+    assert t[1].codec.probe_name == "hevc"
 
 
 def test_fast_preset_is_60fps_crf20():

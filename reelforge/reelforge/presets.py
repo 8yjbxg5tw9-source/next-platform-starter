@@ -48,6 +48,8 @@ class TargetSpec:
     motion_blur_frames: int = 2
     motion_blur_amount: float = 0.5
     keep_source_fps: bool = False
+    maxrate_kbps: Optional[int] = None
+    bufsize_kbps: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,36 @@ class Preset:
             )
             crf = _clamp_crf(codec, crf)
 
+            # --- "custom controls" overrides from the UI -------------------
+            blur = (
+                opts.motion_blur_override
+                if opts.motion_blur_override is not None
+                else spec.motion_blur
+            )
+            blur_frames = (
+                opts.motion_blur_frames_override
+                if opts.motion_blur_frames_override
+                else spec.motion_blur_frames
+            )
+            blur_amount = (
+                opts.motion_blur_amount_override
+                if opts.motion_blur_amount_override is not None
+                else spec.motion_blur_amount
+            )
+            oversample = (
+                opts.oversample_override if opts.oversample_override else spec.oversample
+            )
+            sharpen = (
+                opts.sharpen_override
+                if opts.sharpen_override is not None
+                else spec.sharpen
+            )
+            sharpen_amount = (
+                opts.sharpen_amount_override
+                if opts.sharpen_amount_override is not None
+                else spec.sharpen_amount
+            )
+
             targets.append(
                 RenderTarget(
                     fps=fps,
@@ -123,13 +155,15 @@ class Preset:
                     b_frames=spec.b_frames,
                     tune=spec.tune,
                     interpolation=interp,
-                    oversample=max(1, spec.oversample),
-                    sharpen=spec.sharpen,
-                    sharpen_amount=spec.sharpen_amount,
-                    motion_blur=spec.motion_blur,
-                    motion_blur_frames=spec.motion_blur_frames,
-                    motion_blur_amount=spec.motion_blur_amount,
+                    oversample=max(1, oversample),
+                    sharpen=sharpen,
+                    sharpen_amount=sharpen_amount,
+                    motion_blur=blur,
+                    motion_blur_frames=max(1, blur_frames),
+                    motion_blur_amount=blur_amount,
                     tonemap_sdr=bool(info and info.is_hdr),
+                    maxrate_kbps=opts.maxrate_override or spec.maxrate_kbps,
+                    bufsize_kbps=opts.bufsize_override or spec.bufsize_kbps,
                 )
             )
         return targets
@@ -150,8 +184,8 @@ class Preset:
 
 
 def _profile_for(codec: Codec, spec: TargetSpec, fps: int) -> Tuple[str, str]:
-    """HEVC has different profile/level names than H.264."""
-    if codec == Codec.HEVC:
+    """HEVC/NVENC have different profile/level names than H.264."""
+    if codec in (Codec.HEVC, Codec.NVENC):
         level = "5.1" if fps > 60 else "5.0"
         return "main", level
     profile = spec.profile
@@ -188,6 +222,54 @@ FAST = Preset(
             x264_preset="fast",
             gop_seconds=1.0,
             sharpen=SharpenMode.SHARPEN_OFF,
+        ),
+    ),
+)
+
+TURBO = Preset(
+    id="turbo",
+    label="Turbo Tier",
+    tagline="Sürətli 60FPS rendering",
+    description=(
+        "Ən sürətli yol: x264 preset=veryfast, CRF 21, 60 FPS, sabit GOP. "
+        "Kütləvi emal və qaralama yükləmələr üçün."
+    ),
+    specs=(
+        TargetSpec(
+            fps=60,
+            suffix="turbo",
+            label="Turbo 60FPS",
+            crf=21,
+            x264_preset="veryfast",
+            gop_seconds=1.0,
+            b_frames=2,
+            sharpen=SharpenMode.SHARPEN_OFF,
+        ),
+    ),
+)
+
+STUDIO = Preset(
+    id="studio",
+    label="Studio Tier",
+    tagline="Maksimum keyfiyyət · yüksək bitrate",
+    description=(
+        "x264 preset=slow, CRF 14 + VBV tavanı (-maxrate 50M -bufsize 100M), "
+        "CAS kəskinlik, 60 FPS. Platforma re-encode edəndə belə detal qalır."
+    ),
+    specs=(
+        TargetSpec(
+            fps=60,
+            suffix="studio",
+            label="Studio HQ",
+            crf=14,
+            x264_preset="slow",
+            gop_seconds=1.0,
+            b_frames=2,
+            tune="film",
+            sharpen=SharpenMode.CAS,
+            sharpen_amount=0.6,
+            maxrate_kbps=50_000,
+            bufsize_kbps=100_000,
         ),
     ),
 )
@@ -312,19 +394,26 @@ MASTER = Preset(
 )
 
 
-ALL_PRESETS: Tuple[Preset, ...] = (FAST, SAFE, ULTRA_120, MOTION_BLUR, MASTER)
+ALL_PRESETS: Tuple[Preset, ...] = (
+    TURBO, SAFE, STUDIO, ULTRA_120,      # the four tiers shown in the UI
+    FAST, MOTION_BLUR, MASTER,           # extras, reachable from the CLI
+)
 
 
 class Presets:
     """Namespace so callers can write ``Presets.ULTRA_120``."""
 
+    TURBO = TURBO
     FAST = FAST
     SAFE = SAFE
+    STUDIO = STUDIO
     ULTRA_120 = ULTRA_120
     MOTION_BLUR = MOTION_BLUR
     MASTER = MASTER
 
     ALL: Tuple[Preset, ...] = ALL_PRESETS
+    #: the tiers rendered by the Decoy-style UI, in display order
+    TIERS: Tuple[Preset, ...] = (TURBO, SAFE, STUDIO, ULTRA_120)
 
     @classmethod
     def by_id(cls, preset_id: str) -> Preset:
@@ -333,10 +422,14 @@ class Presets:
             if p.id == key:
                 return p
         aliases = {
+            "turbo": cls.TURBO,
             "fast": cls.FAST,
             "tiktok": cls.SAFE,
             "safe": cls.SAFE,
+            "safemode": cls.SAFE,
             "bypass": cls.SAFE,
+            "studio": cls.STUDIO,
+            "hq": cls.STUDIO,
             "ultra": cls.ULTRA_120,
             "120": cls.ULTRA_120,
             "ultra120": cls.ULTRA_120,

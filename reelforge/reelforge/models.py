@@ -31,6 +31,12 @@ class Codec(StrEnum):
 
     H264 = "h264"
     HEVC = "hevc"
+    NVENC = "nvenc"        # NVIDIA hardware encoder (h264_nvenc / hevc_nvenc)
+
+    @property
+    def probe_name(self) -> str:
+        """What ffprobe/ffmpeg reports back after the file is written."""
+        return "hevc" if self is Codec.HEVC or self is Codec.NVENC else "h264"
 
 
 class FitMode(StrEnum):
@@ -250,6 +256,8 @@ class RenderTarget:
     motion_blur_amount: float = 0.5
     denoise: bool = False
     tonemap_sdr: bool = False           # auto-enabled for HDR sources
+    maxrate_kbps: Optional[int] = None  # VBV cap (Studio tier / NVENC)
+    bufsize_kbps: Optional[int] = None
 
     @property
     def gop(self) -> int:
@@ -289,6 +297,15 @@ class JobOptions:
     crf_override: Optional[int] = None
     interpolation_override: Optional[InterpolationEngineKind] = None
     fps_override: Optional[int] = None
+    # "custom controls" section overrides (Decoy-style UI)
+    motion_blur_override: Optional[MotionBlurMode] = None
+    motion_blur_frames_override: Optional[int] = None
+    motion_blur_amount_override: Optional[float] = None
+    oversample_override: Optional[int] = None
+    sharpen_override: Optional[SharpenMode] = None
+    sharpen_amount_override: Optional[float] = None
+    maxrate_override: Optional[int] = None      # kbps
+    bufsize_override: Optional[int] = None      # kbps
 
     # runtime
     threads: int = 0                    # 0 -> let ffmpeg decide

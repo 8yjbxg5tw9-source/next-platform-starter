@@ -31,3 +31,40 @@ FONTS = {
 
 APPEARANCE_MODE = "dark"
 COLOR_THEME = "dark-blue"
+
+
+# --------------------------------------------------------------------------- #
+# Decoy-style palette: near-black shell + neon purple accents, sharp corners
+# --------------------------------------------------------------------------- #
+
+DECOY: Dict[str, str] = {
+    "bg": "#0d0d0d",           # window background
+    "panel": "#121212",        # section panels
+    "panel_2": "#171717",      # nested surfaces (tier cards, log)
+    "line": "#262626",         # hairline borders
+    "text": "#f2f2f2",
+    "text_dim": "#8a8a8a",
+    "accent": "#7b2cbf",       # neon purple
+    "accent_hi": "#9d4edd",    # lighter purple (hover / gradient end)
+    "accent_lo": "#5a189a",    # darker purple (gradient start / pressed)
+    "cyan": "#4cc9f0",         # secondary neon
+    "ok": "#3ddc84",
+    "warn": "#ffb020",
+    "error": "#ff4d6d",
+}
+
+#: sharp corners everywhere -> the "yığcam, kəskin kənarlı" look
+SHARP = 0
+SOFT = 4
+
+DECOY_FONTS = {
+    "logo": (FONT_FAMILY, 20, "bold"),
+    "logo_sub": ("Consolas" if __import__("os").name == "nt" else "Menlo", 11),
+    "section": (FONT_FAMILY, 11, "bold"),
+    "tier": (FONT_FAMILY, 13, "bold"),
+    "tier_sub": (FONT_FAMILY, 10),
+    "body": (FONT_FAMILY, 12),
+    "small": (FONT_FAMILY, 10),
+    "button": (FONT_FAMILY, 14, "bold"),
+    "mono": ("Consolas" if __import__("os").name == "nt" else "Menlo", 11),
+}
