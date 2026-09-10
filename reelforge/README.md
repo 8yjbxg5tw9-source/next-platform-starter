@@ -61,35 +61,38 @@ python -m reelforge            # Decoy stilində tünd UI (default)
 python -m reelforge --advanced # 3 sütunlu "studio" UI (bütün CLI parametrləri)
 ```
 
-Decoy-stil pəncərə (520×860, `#0d0d0d` fon, `#7b2cbf` neon bənövşəyi, kəskin kənarlar):
+### Giriş şifrəsi (startup lock)
+
+Proqram açılan kimi **hacker-stil qırmızı terminal** giriş ekranı çıxır:
+maskalı şifrə xanası, **3 cəhd**, Enter = daxil, Esc = çıxış. Şifrə düzgün
+olanda əsas pəncərə açılır. Məntiq `reelforge/access.py`-dədir — şifrənin
+özü kodda **plaintext saxlanmır**, yalnız SHA-256 hash-i (test bunu yoxlayır).
+
+### Decoy pəncərəsi — qırmızı "hacker terminal" dizayn
+
+Geniş **2 sütunlu** pəncərə (1060×700, `#0a0406` qırmızı-qara fon,
+`#e50914` neon qırmızı, mono font, kəskin kənarlar). **EXPORT düyməsi və
+SYSTEM LOG açılan kimi görünür** — heç nə aşağıda qalmır:
 
 ```
-┌────────────────────────────────────────────┐
-│ DECOY 120FPS PRO      v1.0.0 · RIFE AI     │ header (+ ffmpeg versiyası)
-├────────────────────────────────────────────┤
-│        DRAG & DROP VIDEO HERE              │ input zone
-│            [ SELECT VIDEO ]                │ (tkinterdnd2 varsa sürüklə-burax)
-│ clip.mp4 · 1080x1920 · 30.00fps · 12.4s    │
-├────────────────────────────────────────────┤
-│ RENDER TIER                                │
-│ [ TURBO TIER    ] [ SAFE MODE TIER ]       │ 2×2 tier kartları
-│ [ STUDIO TIER   ] [ ULTRA 120FPS   ]       │ (seçilən = bənövşəyi çərçivə)
-├────────────────────────────────────────────┤
-│ CUSTOM CONTROLS                            │
-│ MOTION BLUR  [switch] ────o──── 60·4 frames│
-│ SHARPENING   [switch] CAS filter           │
-│ OUTPUT FPS   [ 60 FPS | 120 FPS | SOURCE ] │
-│ RESOLUTION   [ SOURCE / 1080x1920 / ... ]  │
-│ CODEC        [ H.264 | NVENC | HEVC ]      │
-│ OUTPUT       [ /path ] [ BROWSE ]          │
-├────────────────────────────────────────────┤
-│ [################-----------] 62%          │ export zone
-│ Encoding…                       ETA 12s    │
-│ [      EXPORT / CONVERT      ] [ CANCEL ]  │
-├────────────────────────────────────────────┤
-│ LOG (kompakt konsol)                       │
-└────────────────────────────────────────────┘
+┌────────────────────────────────────────────┬───────────────────────────────┐
+│ █ DECOY 120FPS PRO · root@reelforge:~#     │           ● ffmpeg 7.0.2      │
+├────────────────────────────────────────────┼───────────────────────────────┤
+│ » INPUT            [ DRAG & DROP ]         │ » EXPORT                      │
+│ » RENDER TIER      [ 2×2 tier kartları ]   │  [####------] 62%  ETA 12s    │
+│ » CUSTOM CONTROLS                          │  [ ▶ EXPORT / CONVERT ]       │
+│   MOTION BLUR / SHARPENING / FPS /         │  [ CANCEL ]                   │
+│   RESOLUTION / CODEC / OUTPUT /            │ » SYSTEM LOG                  │
+│   TIKTOK / HESAB / DESCRIPTION             │  [12:04:44] Render Bitti ✓    │
+│                                            │  [12:04:45] TikTok-a yüklənir…│
+└────────────────────────────────────────────┴───────────────────────────────┘
 ```
+
+LOG terminal kimidir: `[HH:MM:SS]` vaxt ştampları, xətalar qırmızı, uğurlu
+mərhələlər yaşıl, TikTok sətirləri mərcan rəngində. Mockup-lar:
+[`docs/ui_mockup.png`](docs/ui_mockup.png) və
+[`docs/lock_mockup.png`](docs/lock_mockup.png)
+(`python scripts/render_mockup.py` ilə yenilənir).
 
 Status mətni fazalara görə dəyişir: `Ready` → `Analyzing…` → `Extracting frames…`
 → `Applying RIFE 120FPS…` → `Encoding…` → `Done`.
@@ -363,7 +366,8 @@ reelforge/
 │   ├── session.py         Auto-Session Capture (LOGIN TO TIKTOK, sessiya faylı)
 │   ├── upload.py          TikTok-a avtomatik yükləmə (sessiya, backend seçimi)
 │   ├── uistate.py         UI widget → preset/JobOptions xəritəsi (saf Python, testli)
-│   └── gui/               decoy.py (Decoy-stil UI) · app.py (studio UI) · theme.py · dnd.py
+│   ├── access.py          giriş şifrəsi məntiqi (SHA-256, saf Python, testli)
+│   └── gui/               decoy.py (Decoy UI) · lock.py (giriş ekranı) · app.py · theme.py · dnd.py
 └── tests/                 unit + real-ffmpeg e2e testləri
 ```
 

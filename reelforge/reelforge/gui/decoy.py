@@ -1,42 +1,30 @@
-"""Decoy-style window: dark shell, neon purple accents, tier selector, export.
+"""Decoy-style window: red-toned hacker terminal, wide 2-column layout.
 
-Layout (top -> bottom, single 520px column)
+Layout (1060x700 — everything visible at once, no scrolling)
 
-    +----------------------------------------------------------+
-    |  DECOY 120FPS PRO            v1.0.0 · RIFE AI ENGINE     |  header
-    +----------------------------------------------------------+
-    |                                                          |
-    |            DRAG & DROP VIDEO HERE                        |  drop zone
-    |                 [ SELECT VIDEO ]                         |
-    |  clip.mp4 · 1080x1920 · 30.00fps · 12.4s                 |
-    +----------------------------------------------------------+
-    |  RENDER TIER                                             |
-    |  [ TURBO TIER      ] [ SAFE MODE TIER ]                  |  2x2 tiers
-    |  [ STUDIO TIER     ] [ ULTRA 120FPS   ]                  |
-    +----------------------------------------------------------+
-    |  CUSTOM CONTROLS                                         |
-    |  MOTION BLUR      [switch]  ----o-----  40 (3 frames)    |
-    |  SHARPENING       [switch]                               |
-    |  OUTPUT FPS       [ 60 FPS | 120 FPS | SOURCE ]          |
-    |  RESOLUTION       [ SOURCE v ]                           |
-    |  CODEC            [ H.264 | NVENC | HEVC ]               |
-    |  OUTPUT           [ /path/to/out      ] [ BROWSE ]       |
-    |  TIKTOK           [AUTO-UPLOAD TO TIKTOK switch]         |
-    |  HESAB            [ LOGIN TO TIKTOK ] LOGGED IN ✓ @user  |
-    |  DESCRIPTION      [ #fyp #120fps caption… ]              |
-    +----------------------------------------------------------+
-    |  [##############----------------] 48%                    |  export zone
-    |  Encoding…                        ETA 12s                |
-    |  [        EXPORT / CONVERT       ]  [ CANCEL ]           |
-    +----------------------------------------------------------+
-    |  log console (compact)                                   |
-    +----------------------------------------------------------+
+    +---------------------------------------------------------------+
+    |  █ DECOY 120FPS PRO   root@reelforge:~#      [ffmpeg 7.0.2 ●]  |  header
+    +----------------------------------+----------------------------+
+    |  » INPUT                         |  » EXPORT                  |
+    |  [ DRAG & DROP VIDEO HERE ]      |  [####--------] 48%        |
+    |  [ SELECT VIDEO ]  file info     |  Encoding…        ETA 12s  |
+    |  » RENDER TIER                   |  [  EXPORT / CONVERT  ]    |
+    |  [ TURBO ] [ SAFE MODE ]         |  [      CANCEL       ]     |
+    |  [ STUDIO ] [ ULTRA 120FPS ]     |  » SYSTEM LOG              |
+    |  » CUSTOM CONTROLS               |  [12:04:31] engine=rife    |
+    |  MOTION BLUR / SHARPENING        |  [12:04:44] Render Bitti ✓ |
+    |  FPS / RESOLUTION / CODEC        |  [12:04:45] TikTok-a …     |
+    |  OUTPUT / TIKTOK / HESAB / DESC  |  █                         |
+    +----------------------------------+----------------------------+
 
 The window holds no rendering logic: it reads the widgets into a
 :class:`~reelforge.uistate.UIState`, hands that to
 :class:`~reelforge.pipeline.ReelForge` on a worker thread, and paints whatever
 arrives on the event queue.  Every decision (which FFmpeg flags, which engine,
 which fallback) is made in the backend and covered by tests.
+
+Startup is gated by the hacker-style password lock (:mod:`reelforge.gui.lock`,
+logic in :mod:`reelforge.access`).
 """
 
 from __future__ import annotations
@@ -44,6 +32,7 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -80,9 +69,9 @@ from .theme import APPEARANCE_MODE, COLOR_THEME, DECOY, DECOY_FONTS, SHARP
 ctk.set_appearance_mode(APPEARANCE_MODE)
 ctk.set_default_color_theme(COLOR_THEME)
 
-APP_TITLE = "DECOY 120FPS PRO"
+APP_TITLE = "█ DECOY 120FPS PRO"
 APP_VERSION = "v1.0.0"
-APP_SUBTITLE = "RIFE AI ENGINE · FFMPEG"
+APP_SUBTITLE = "root@reelforge:~# rife-engine --120fps --anti-compression"
 
 
 # --------------------------------------------------------------------------- #
@@ -91,7 +80,7 @@ APP_SUBTITLE = "RIFE AI ENGINE · FFMPEG"
 
 
 class TierCard(ctk.CTkFrame):
-    """One selectable tier tile (sharp corners, purple when active)."""
+    """One selectable tier tile (sharp corners, neon red when active)."""
 
     def __init__(self, master, tier_id: str, on_select):
         super().__init__(
@@ -104,12 +93,12 @@ class TierCard(ctk.CTkFrame):
             self, text=TIER_LABELS[tier_id], font=DECOY_FONTS["tier"],
             text_color=DECOY["text"], anchor="w",
         )
-        self.title.pack(anchor="w", padx=10, pady=(8, 0))
+        self.title.pack(anchor="w", padx=8, pady=(5, 0))
         self.sub = ctk.CTkLabel(
             self, text=TIER_TAGLINES[tier_id], font=DECOY_FONTS["tier_sub"],
             text_color=DECOY["text_dim"], anchor="w",
         )
-        self.sub.pack(anchor="w", padx=10, pady=(0, 8))
+        self.sub.pack(anchor="w", padx=8, pady=(0, 5))
         for widget in (self, self.title, self.sub):
             widget.bind("<Button-1>", lambda _e: self.on_select(self.tier_id))
         self.set_active(False)
@@ -162,98 +151,113 @@ class DecoyApp(ctk.CTk):
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         self.title(f"{APP_TITLE} — {APP_VERSION}")
-        self.geometry("520x980")
-        self.minsize(480, 880)
+        self.geometry("1060x700")
+        self.minsize(1000, 640)
         self.configure(fg_color=DECOY["bg"])
-        self.grid_columnconfigure(0, weight=1)
-        for row in range(6):
-            self.grid_rowconfigure(row, weight=0)
-        self.grid_rowconfigure(5, weight=1)
+        self.grid_columnconfigure(0, weight=11, uniform="col")
+        self.grid_columnconfigure(1, weight=9, uniform="col")
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=1)
 
         self._build_header()
-        self._build_dropzone()
-        self._build_tiers()
-        self._build_controls()
-        self._build_export()
-        self._build_log()
 
-    def _section(self, row: int, title: str) -> ctk.CTkFrame:
-        panel = ctk.CTkFrame(self, fg_color=DECOY["panel"], corner_radius=SHARP,
+        left = ctk.CTkFrame(self, fg_color="transparent")
+        left.grid(row=1, column=0, sticky="nsew", padx=(10, 4), pady=(0, 10))
+        left.grid_columnconfigure(0, weight=1)
+        left.grid_rowconfigure((0, 1, 2), weight=0)
+
+        right = ctk.CTkFrame(self, fg_color="transparent")
+        right.grid(row=1, column=1, sticky="nsew", padx=(4, 10), pady=(0, 10))
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(0, weight=0)
+        right.grid_rowconfigure(1, weight=1)
+
+        self._build_dropzone(left)
+        self._build_tiers(left)
+        self._build_controls(left)
+        self._build_export(right)
+        self._build_log(right)
+
+    def _section(self, parent, row: int, title: str) -> ctk.CTkFrame:
+        panel = ctk.CTkFrame(parent, fg_color=DECOY["panel"], corner_radius=SHARP,
                              border_width=1, border_color=DECOY["line"])
-        panel.grid(row=row, column=0, sticky="ew", padx=10, pady=(8, 0))
+        panel.grid(row=row, column=0, sticky="ew", pady=(8, 0))
         panel.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(panel, text=title, font=DECOY_FONTS["section"],
+        ctk.CTkLabel(panel, text=f"» {title}", font=DECOY_FONTS["section"],
                      text_color=DECOY["accent_hi"]).grid(
-            row=0, column=0, sticky="w", padx=12, pady=(8, 2))
+            row=0, column=0, sticky="w", padx=10, pady=(6, 2))
         return panel
 
     def _build_header(self) -> None:
         header = ctk.CTkFrame(self, fg_color=DECOY["panel"], corner_radius=SHARP,
-                              border_width=1, border_color=DECOY["line"], height=62)
-        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+                              border_width=1, border_color=DECOY["accent_lo"],
+                              height=54)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
         header.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(header, text=APP_TITLE, font=DECOY_FONTS["logo"],
                      text_color=DECOY["accent_hi"]).grid(
-            row=0, column=0, sticky="w", padx=14, pady=(10, 0))
+            row=0, column=0, sticky="w", padx=12, pady=(6, 0))
         ctk.CTkLabel(header, text=f"{APP_VERSION} · {APP_SUBTITLE}",
                      font=DECOY_FONTS["logo_sub"],
                      text_color=DECOY["text_dim"]).grid(
-            row=1, column=0, sticky="w", padx=14, pady=(0, 10))
+            row=1, column=0, sticky="w", padx=12, pady=(0, 6))
         self.badge = ctk.CTkLabel(
-            header, text=f"ffmpeg {self.engine.toolchain.version or '?'}",
-            font=DECOY_FONTS["logo_sub"], text_color=DECOY["cyan"])
-        self.badge.grid(row=0, column=1, sticky="ne", padx=14, pady=12)
+            header, text=f"● ffmpeg {self.engine.toolchain.version or '?'}",
+            font=DECOY_FONTS["logo_sub"], text_color=DECOY["ok"])
+        self.badge.grid(row=0, column=1, rowspan=2, sticky="e", padx=12)
 
-    def _build_dropzone(self) -> None:
-        panel = self._section(1, "INPUT")
+    def _build_dropzone(self, parent) -> None:
+        panel = self._section(parent, 0, "INPUT")
         zone = ctk.CTkFrame(panel, fg_color=DECOY["bg"], corner_radius=SHARP,
-                            border_width=2, border_color=DECOY["accent"], height=124)
-        zone.grid(row=1, column=0, sticky="ew", padx=12, pady=(2, 8))
+                            border_width=2, border_color=DECOY["accent_lo"],
+                            height=88)
+        zone.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 4))
         zone.grid_columnconfigure(0, weight=1)
         zone.grid_propagate(False)
         self.drop_title = ctk.CTkLabel(
             zone,
             text="DRAG & DROP VIDEO HERE" if self.dnd_enabled else "SELECT A VIDEO FILE",
             font=DECOY_FONTS["tier"], text_color=DECOY["text"])
-        self.drop_title.grid(row=0, column=0, pady=(26, 2))
-        ctk.CTkButton(
-            zone, text="SELECT VIDEO", width=140, height=28, corner_radius=SHARP,
+        self.drop_title.grid(row=0, column=0, pady=(16, 0))
+        self.select_btn = ctk.CTkButton(
+            zone, text="[ SELECT VIDEO ]", width=150, height=26, corner_radius=SHARP,
             fg_color=DECOY["accent"], hover_color=DECOY["accent_hi"],
-            font=DECOY_FONTS["body"], command=self.pick_file,
-        ).grid(row=1, column=0, pady=(6, 0))
+            font=DECOY_FONTS["small"], command=self.pick_file,
+        )
+        self.select_btn.grid(row=1, column=0, pady=(4, 0))
         for widget in (zone, self.drop_title):
             widget.bind("<Button-1>", lambda _e: self.pick_file())
         if self.dnd_enabled:
             dnd.register_drop_target(zone, self.on_drop)
 
         self.file_label = ctk.CTkLabel(
-            panel, text="Heç bir fayl seçilməyib", font=DECOY_FONTS["small"],
-            text_color=DECOY["text_dim"], anchor="w", wraplength=440, justify="left")
-        self.file_label.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 10))
+            panel, text="> heç bir fayl seçilməyib", font=DECOY_FONTS["small"],
+            text_color=DECOY["text_dim"], anchor="w", wraplength=460, justify="left")
+        self.file_label.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
 
-    def _build_tiers(self) -> None:
-        panel = self._section(2, "RENDER TIER")
+    def _build_tiers(self, parent) -> None:
+        panel = self._section(parent, 1, "RENDER TIER")
         grid = ctk.CTkFrame(panel, fg_color="transparent")
-        grid.grid(row=1, column=0, sticky="ew", padx=12, pady=(2, 12))
+        grid.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 10))
         grid.grid_columnconfigure((0, 1), weight=1, uniform="tier")
         for index, tier_id in enumerate(TIER_ORDER):
             card = TierCard(grid, tier_id, self.select_tier)
-            card.grid(row=index // 2, column=index % 2, sticky="nsew", padx=3, pady=3)
+            card.grid(row=index // 2, column=index % 2, sticky="nsew", padx=2, pady=2)
             self.tier_cards[tier_id] = card
         self.select_tier(self.tier)
 
-    def _build_controls(self) -> None:
-        panel = self._section(3, "CUSTOM CONTROLS")
+    def _build_controls(self, parent) -> None:
+        panel = self._section(parent, 2, "CUSTOM CONTROLS")
         body = ctk.CTkFrame(panel, fg_color="transparent")
-        body.grid(row=1, column=0, sticky="ew", padx=12, pady=(2, 10))
+        body.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 8))
         body.grid_columnconfigure(1, weight=1)
 
         def row(index: int, label: str) -> ctk.CTkFrame:
             frame = ctk.CTkFrame(body, fg_color="transparent")
-            frame.grid(row=index, column=0, sticky="ew", pady=3)
+            frame.grid(row=index, column=0, sticky="ew", pady=2)
             frame.grid_columnconfigure(1, weight=1)
             ctk.CTkLabel(frame, text=label, font=DECOY_FONTS["section"],
-                         text_color=DECOY["text_dim"], width=118,
+                         text_color=DECOY["text_dim"], width=110,
                          anchor="w").grid(row=0, column=0, sticky="w")
             return frame
 
@@ -319,7 +323,7 @@ class DecoyApp(ctk.CTk):
                      font=DECOY_FONTS["small"],
                      placeholder_text="mənbə ilə eyni qovluq").grid(
             row=0, column=1, sticky="ew")
-        ctk.CTkButton(r, text="BROWSE", width=72, height=26, corner_radius=SHARP,
+        ctk.CTkButton(r, text="BROWSE", width=68, height=24, corner_radius=SHARP,
                       fg_color=DECOY["panel_2"], hover_color=DECOY["accent_lo"],
                       font=DECOY_FONTS["small"], command=self.pick_outdir).grid(
             row=0, column=2, padx=(8, 0))
@@ -336,15 +340,15 @@ class DecoyApp(ctk.CTk):
         # tiktok account: one-click login + session status
         r = row(7, "HESAB")
         self.login_btn = ctk.CTkButton(
-            r, text="LOGIN TO TIKTOK", width=142, height=26, corner_radius=SHARP,
+            r, text="[ LOGIN TO TIKTOK ]", width=142, height=24, corner_radius=SHARP,
             fg_color=DECOY["accent"], hover_color=DECOY["accent_hi"],
             text_color="#ffffff", font=DECOY_FONTS["small"],
             command=self.login_to_tiktok)
         self.login_btn.grid(row=0, column=1, sticky="w")
         self.session_label = ctk.CTkLabel(
             r, text="GİRİŞ YOXDUR", font=DECOY_FONTS["small"],
-            text_color=DECOY["text_dim"], width=170, anchor="w")
-        self.session_label.grid(row=0, column=2, sticky="w", padx=(10, 0))
+            text_color=DECOY["text_dim"], width=150, anchor="w")
+        self.session_label.grid(row=0, column=2, sticky="w", padx=(8, 0))
 
         # tiktok description / hashtags
         r = row(8, "DESCRIPTION")
@@ -359,16 +363,16 @@ class DecoyApp(ctk.CTk):
         self.description_entry.configure(state="disabled")
         self._refresh_session_label()
 
-    def _build_export(self) -> None:
-        panel = self._section(4, "EXPORT")
+    def _build_export(self, parent) -> None:
+        panel = self._section(parent, 0, "EXPORT")
         self.progress = ctk.CTkProgressBar(
             panel, progress_color=DECOY["accent"], fg_color=DECOY["line"],
             corner_radius=SHARP, height=12)
         self.progress.set(0)
-        self.progress.grid(row=1, column=0, sticky="ew", padx=12, pady=(6, 2))
+        self.progress.grid(row=1, column=0, sticky="ew", padx=10, pady=(6, 2))
 
         status_row = ctk.CTkFrame(panel, fg_color="transparent")
-        status_row.grid(row=2, column=0, sticky="ew", padx=12)
+        status_row.grid(row=2, column=0, sticky="ew", padx=10)
         status_row.grid_columnconfigure(0, weight=1)
         self.status = ctk.CTkLabel(status_row, text=status_text("idle"),
                                    font=DECOY_FONTS["body"],
@@ -378,28 +382,33 @@ class DecoyApp(ctk.CTk):
                                       text_color=DECOY["text_dim"], anchor="e")
         self.eta_label.grid(row=0, column=1, sticky="e")
 
-        buttons = ctk.CTkFrame(panel, fg_color="transparent")
-        buttons.grid(row=3, column=0, sticky="ew", padx=12, pady=(8, 12))
-        buttons.grid_columnconfigure(0, weight=1)
         self.export_btn = ctk.CTkButton(
-            buttons, text="EXPORT / CONVERT", height=46, corner_radius=SHARP,
+            panel, text="▶  EXPORT / CONVERT", height=44, corner_radius=SHARP,
             fg_color=DECOY["accent"], hover_color=DECOY["accent_hi"],
             text_color="#ffffff", font=DECOY_FONTS["button"], command=self.start_export)
-        self.export_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.export_btn.grid(row=3, column=0, sticky="ew", padx=10, pady=(8, 4))
         self.cancel_btn = ctk.CTkButton(
-            buttons, text="CANCEL", width=86, height=46, corner_radius=SHARP,
+            panel, text="CANCEL", height=28, corner_radius=SHARP,
             fg_color=DECOY["panel_2"], hover_color=DECOY["error"],
-            text_color=DECOY["text_dim"], font=DECOY_FONTS["body"],
+            text_color=DECOY["text_dim"], font=DECOY_FONTS["small"],
             state="disabled", command=self.cancel_export)
-        self.cancel_btn.grid(row=0, column=1)
+        self.cancel_btn.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
 
-    def _build_log(self) -> None:
-        panel = self._section(5, "LOG")
+    def _build_log(self, parent) -> None:
+        panel = self._section(parent, 1, "SYSTEM LOG")
+        panel.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         self.log_box = ctk.CTkTextbox(
-            panel, fg_color=DECOY["bg"], text_color=DECOY["text_dim"],
-            font=DECOY_FONTS["mono"], corner_radius=SHARP, wrap="word", height=110)
-        self.log_box.grid(row=1, column=0, sticky="nsew", padx=12, pady=(2, 10))
+            panel, fg_color="#050203", text_color=DECOY["text_dim"],
+            font=DECOY_FONTS["mono"], corner_radius=SHARP, wrap="word")
+        self.log_box.grid(row=1, column=0, sticky="nsew", padx=10, pady=(2, 10))
         panel.grid_rowconfigure(1, weight=1)
+        try:  # terminal colouring (guarded for older CustomTkinter)
+            self.log_box.tag_config("dim", foreground=DECOY["text_dim"])
+            self.log_box.tag_config("err", foreground=DECOY["error"])
+            self.log_box.tag_config("ok", foreground=DECOY["ok"])
+            self.log_box.tag_config("hl", foreground=DECOY["cyan"])
+        except Exception:  # pragma: no cover - very old CTk without tags
+            pass
         self.log(self.engine.describe())
         self.log(upload_mod.describe())
 
@@ -430,11 +439,11 @@ class DecoyApp(ctk.CTk):
         try:
             info = self.engine.probe(self.source)
             self.file_label.configure(
-                text=f"{self.source.name} · {info.resolution} · {info.fps:.2f}fps · "
+                text=f"> {self.source.name} · {info.resolution} · {info.fps:.2f}fps · "
                      f"{info.duration:.1f}s{' · HDR' if info.is_hdr else ''}")
             self.log(f"Mənbə: {info.summary()}")
         except Exception as exc:
-            self.file_label.configure(text=f"{self.source.name} (oxunmadı: {exc})")
+            self.file_label.configure(text=f"> {self.source.name} (oxunmadı: {exc})")
 
     def pick_outdir(self) -> None:
         picked = filedialog.askdirectory(title="Output folder")
@@ -621,12 +630,31 @@ class DecoyApp(ctk.CTk):
         self.log("Ləğv edilir…")
 
     # ------------------------------------------------------------- plumbing
+    def _append_log(self, text: str) -> None:
+        """Terminal-style line: [HH:MM:SS] prefix + colour tag."""
+        stamp = time.strftime("%H:%M:%S")
+        lowered = text.lower()
+        if "xəta" in lowered or "error" in lowered or text.strip().startswith("!"):
+            tag = "err"
+        elif "✓" in text or "hazır" in lowered:
+            tag = "ok"
+        elif text.startswith("TIKTOK") or "backend" in lowered:
+            tag = "hl"
+        else:
+            tag = "dim"
+        lines = text.splitlines() or [""]
+        for line in lines:
+            try:
+                self.log_box.insert("end", f"[{stamp}] {line}\n", tag)
+            except Exception:  # pragma: no cover - CTk without tag support
+                self.log_box.insert("end", f"[{stamp}] {line}\n")
+        self.log_box.see("end")
+
     def log(self, text: str) -> None:
         if threading.current_thread() is not threading.main_thread():
             self.events.put(("log", text))
             return
-        self.log_box.insert("end", text + "\n")
-        self.log_box.see("end")
+        self._append_log(text)
 
     def on_progress(self, info: ProgressInfo) -> None:
         self.events.put(("progress", info))
@@ -636,8 +664,7 @@ class DecoyApp(ctk.CTk):
             while True:
                 kind, payload = self.events.get_nowait()
                 if kind == "log":
-                    self.log_box.insert("end", payload + "\n")
-                    self.log_box.see("end")
+                    self._append_log(payload)
                 elif kind == "progress":
                     info: ProgressInfo = payload
                     if info.message.startswith("engine="):
@@ -694,7 +721,17 @@ class DecoyApp(ctk.CTk):
 
 
 def launch(ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None) -> bool:
-    """Open the Decoy-style window.  Returns ``False`` if it cannot start."""
+    """Password gate -> Decoy window.  Returns ``False`` if it cannot start."""
+    try:
+        from .lock import request_access
+
+        if not request_access():
+            print("Giriş alınmadı — proqram bağlandı.", file=sys.stderr)
+            return False
+    except Exception as exc:  # no display / broken Tk
+        print(f"Giriş ekranı açıla bilmədi: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return False
     try:
         engine = ReelForge(ffmpeg, ffprobe)
     except ToolchainError as exc:

@@ -625,7 +625,17 @@ class ReelForgeApp(ctk.CTk):
 
 
 def launch(ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None) -> bool:
-    """Create the window and run the main loop.  ``False`` if it cannot start."""
+    """Password gate -> window -> main loop.  ``False`` if it cannot start."""
+    try:
+        from .lock import request_access
+
+        if not request_access():
+            print("Giriş alınmadı — proqram bağlandı.", file=sys.stderr)
+            return False
+    except Exception as exc:  # no display / broken Tk
+        print(f"Giriş ekranı açıla bilmədi: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return False
     try:
         engine = ReelForge(ffmpeg, ffprobe)
     except ToolchainError as exc:

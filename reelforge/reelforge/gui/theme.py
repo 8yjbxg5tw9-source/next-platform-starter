@@ -1,10 +1,17 @@
-"""Dark theme tokens for the GUI (single source of truth for colours)."""
+"""Dark theme tokens for the GUI (single source of truth for colours).
+
+The Decoy window uses a **red-toned "hacker terminal"** look: near-black
+backgrounds with a red tint, neon-red accents, sharp corners and monospace
+fonts everywhere — like a root shell that renders videos.
+"""
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import Dict
 
-#: Base palette — a slightly blue-tinted dark UI, TikTok-ish accent
+#: Base palette — used by the advanced studio window (``gui/app.py``)
 PALETTE: Dict[str, str] = {
     "bg": "#0f1115",
     "surface": "#171a21",
@@ -20,13 +27,22 @@ PALETTE: Dict[str, str] = {
     "error": "#ff5c5c",
 }
 
-FONT_FAMILY = "Segoe UI" if __import__("os").name == "nt" else "Helvetica"
+FONT_FAMILY = "Segoe UI" if os.name == "nt" else "Helvetica"
+
+#: monospace family for the hacker look (per platform)
+if os.name == "nt":
+    MONO_FAMILY = "Consolas"
+elif sys.platform == "darwin":
+    MONO_FAMILY = "Menlo"
+else:
+    MONO_FAMILY = "DejaVu Sans Mono"
+
 FONTS = {
     "title": (FONT_FAMILY, 22, "bold"),
     "h2": (FONT_FAMILY, 15, "bold"),
     "body": (FONT_FAMILY, 13),
     "small": (FONT_FAMILY, 11),
-    "mono": ("Consolas" if __import__("os").name == "nt" else "Menlo", 12),
+    "mono": (MONO_FAMILY, 12),
 }
 
 APPEARANCE_MODE = "dark"
@@ -34,37 +50,38 @@ COLOR_THEME = "dark-blue"
 
 
 # --------------------------------------------------------------------------- #
-# Decoy-style palette: near-black shell + neon purple accents, sharp corners
+# Decoy palette: red-toned hacker terminal — near-black + neon red, sharp
 # --------------------------------------------------------------------------- #
 
 DECOY: Dict[str, str] = {
-    "bg": "#0d0d0d",           # window background
-    "panel": "#121212",        # section panels
-    "panel_2": "#171717",      # nested surfaces (tier cards, log)
-    "line": "#262626",         # hairline borders
-    "text": "#f2f2f2",
-    "text_dim": "#8a8a8a",
-    "accent": "#7b2cbf",       # neon purple
-    "accent_hi": "#9d4edd",    # lighter purple (hover / gradient end)
-    "accent_lo": "#5a189a",    # darker purple (gradient start / pressed)
-    "cyan": "#4cc9f0",         # secondary neon
-    "ok": "#3ddc84",
+    "bg": "#0a0406",           # window background (near-black, red tint)
+    "panel": "#140709",        # section panels (dark oxblood)
+    "panel_2": "#1d0b0e",      # nested surfaces (tier cards, inputs)
+    "line": "#3d1219",         # hairline borders (dark red)
+    "text": "#ffe9ea",         # off-white text
+    "text_dim": "#b08a8e",     # muted rose
+    "accent": "#e50914",       # neon red (primary action)
+    "accent_hi": "#ff2f3a",    # bright red (hover / active text)
+    "accent_lo": "#7c0710",    # deep red (pressed / selected tile)
+    "cyan": "#ff6b74",         # status highlight (kept key name; now coral-red)
+    "ok": "#3ddc84",           # green = success (contrast pop)
     "warn": "#ffb020",
-    "error": "#ff4d6d",
+    "error": "#ff1f3d",
 }
 
 #: sharp corners everywhere -> the "yığcam, kəskin kənarlı" look
 SHARP = 0
 SOFT = 4
 
+#: everything monospace -> terminal / hacker aesthetic
 DECOY_FONTS = {
-    "logo": (FONT_FAMILY, 20, "bold"),
-    "logo_sub": ("Consolas" if __import__("os").name == "nt" else "Menlo", 11),
-    "section": (FONT_FAMILY, 11, "bold"),
-    "tier": (FONT_FAMILY, 13, "bold"),
-    "tier_sub": (FONT_FAMILY, 10),
-    "body": (FONT_FAMILY, 12),
-    "small": (FONT_FAMILY, 10),
-    "button": (FONT_FAMILY, 14, "bold"),
-    "mono": ("Consolas" if __import__("os").name == "nt" else "Menlo", 11),
+    "logo": (MONO_FAMILY, 19, "bold"),
+    "logo_sub": (MONO_FAMILY, 10),
+    "section": (MONO_FAMILY, 11, "bold"),
+    "tier": (MONO_FAMILY, 12, "bold"),
+    "tier_sub": (MONO_FAMILY, 9),
+    "body": (MONO_FAMILY, 12),
+    "small": (MONO_FAMILY, 10),
+    "button": (MONO_FAMILY, 14, "bold"),
+    "mono": (MONO_FAMILY, 10),
 }

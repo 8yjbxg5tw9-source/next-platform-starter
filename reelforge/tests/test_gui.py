@@ -58,6 +58,27 @@ def test_theme_tokens_are_complete():
         assert isinstance(family, str) and size > 0
 
 
+def test_decoy_palette_has_every_key_used_by_the_window():
+    required = ("bg", "panel", "panel_2", "line", "text", "text_dim",
+                "accent", "accent_hi", "accent_lo", "cyan", "ok", "warn", "error")
+    for key in required:
+        value = theme.DECOY[key]
+        assert value.startswith("#") and len(value) == 7, key
+
+
+def test_decoy_accent_is_red_dominant():
+    """Hacker look: the accent must be red-dominant (R > G and R > B)."""
+    raw = theme.DECOY["accent"].lstrip("#")
+    r, g, b = (int(raw[i:i + 2], 16) for i in (0, 2, 4))
+    assert r > g and r > b and r > 160
+
+
+def test_decoy_fonts_are_monospace():
+    for name, spec in theme.DECOY_FONTS.items():
+        family = spec[0]
+        assert family == theme.MONO_FAMILY, name
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("tkinter") is None
     or importlib.util.find_spec("customtkinter") is None,
