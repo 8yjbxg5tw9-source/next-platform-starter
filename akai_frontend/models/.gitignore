@@ -1,0 +1,3 @@
+# ONNX model weights (*.onnx) are distributed separately and kept out of git
+*
+!.gitignore

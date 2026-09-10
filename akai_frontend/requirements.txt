@@ -1,0 +1,8 @@
+customtkinter>=5.2
+Pillow>=10.0
+imageio-ffmpeg>=0.4.9
+
+# optional extras (uncomment when shipping the AI models):
+# torch>=2.1
+# onnxruntime-directml>=1.16   # Windows GPU inference
+# tkinterdnd2>=0.3            # drag & drop
