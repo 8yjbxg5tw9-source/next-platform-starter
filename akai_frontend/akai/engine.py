@@ -145,6 +145,8 @@ class RenderJob:
             return (max(2, self.custom_size[0] // 2 * 2),
                     max(2, self.custom_size[1] // 2 * 2))
         box = TARGET_SIZES.get(self.target, TARGET_SIZES["4K"])
+        if src_w <= 0 or src_h <= 0:  # unreadable source: fall back to preset
+            return box
         ratio = min(box[0] / src_w, box[1] / src_h)
         if ratio <= 1.0 and self.target != "CUSTOM":
             ratio = 1.0  # never downscale below the source resolution
@@ -279,6 +281,10 @@ class RenderWorker(threading.Thread):
     def run(self) -> None:  # pragma: no cover - thin orchestration
         try:
             info = ffmpeg_tools.probe(self.job.source)
+            if info.width <= 0 or info.height <= 0:
+                self.error = "Render xətası: fayl oxuna bilmədi (video tanınmadı)"
+                log().error("%s", self.error)
+                return
             output = self.job.output_path(info.path.name)
             argv = build_command(self.job, info.path, output, self.ffmpeg)
             log().info("render start: %s -> %s", info.summary, output)

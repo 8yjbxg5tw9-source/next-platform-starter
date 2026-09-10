@@ -38,3 +38,9 @@ yarn-error.log*
 
 # Local Netlify folder
 .netlify
+
+# python / akai runtime artifacts
+__pycache__/
+*.pyc
+app_debug.log
+.preview_tmp.png
