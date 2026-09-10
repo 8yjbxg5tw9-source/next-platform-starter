@@ -1,0 +1,27 @@
+AKAI — Giriş adları və kodlar (YALNIZ ADMİN ÜÇÜN)
+=================================================
+Bu faylın hamısını heç kimə göndərmə — hər müştəriyə yalnız öz sətirini ver.
+HWID ilk uğurlu girişdə həmin cihazda avtomatik bağlanır: eyni kod başqa
+kompüterdə "Bu abunəlik başqa cihazda aktivdir!" mesajı görəcək.
+
+İstifadəçi adı    Kod
+----------------  --------
+akai01            w7d2m9q4
+akai02            x4t8n3v6
+akai03            y9k5r2h7
+akai04            z3f6w8d2
+akai05            v8h4t7n3
+akai06            t2n9k5x8
+akai07            r6w3f9h4
+akai08            h5x7v2k9
+akai09            n4d8w6t3
+akai10            k9r5h2x7
+
+Müddət hazırda limitsizdir. Müştəriyə müddət qoymaq / uzatmaq üçün:
+  python tools/add_user.py --username akai01 --renew 30      # 30 gün
+  python tools/add_user.py --username akai01 --renew 365     # 1 il
+  python tools/add_user.py --username akai01 --renew 0       # limitsiz
+(--renew yalnız bitmə tarixini dəyişir; şifrə və bağlı HWID toxunulmaz qalır.)
+
+Yeni hesab lazım olsa:
+  python tools/add_user.py --username yeni_ad --password yeni_kod --days 0

@@ -84,6 +84,18 @@ def test_garbage_token_is_401(client):
     assert resp.status_code == 401
 
 
+def test_renew_changes_only_the_expiry(env):
+    env._store.add_user("ren", "pin777", hwid=HWID_A, days=30)
+    before = env._store.get("ren")
+    record = env._store.renew("ren", 5)
+    assert record is not None
+    assert record["expires_at"] == (
+        dt.date.today() + dt.timedelta(days=5)).isoformat()
+    assert record["password"] == before["password"]
+    assert record["hwid"] == before["hwid"]
+    assert env._store.renew("missing-user", 5) is None
+
+
 def test_passwords_are_stored_as_digests_only(env, tmp_path):
     env._store.add_user("test_hash", "my-plain-secret", hwid=HWID_A)
     raw = env._store._path.read_text(encoding="utf-8")

@@ -121,7 +121,7 @@ class LoginWindow(ctk.CTk):
         self.status.grid(row=7, column=0, pady=(16, 0))
 
         ctk.CTkLabel(card, text=WHATSAPP_TEXT, wraplength=400, justify="center",
-                     font=ctk.CTkFont("Segoe UI", 12.5),
+                     font=ctk.CTkFont("Segoe UI", 13),
                      text_color="#c7ccd4").grid(row=8, column=0,
                                                 pady=(20, 26))
 

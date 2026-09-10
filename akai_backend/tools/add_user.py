@@ -32,10 +32,22 @@ def main(argv=None) -> int:
     parser.add_argument("--hwid", default="", help="AKAI-XXXX-XXXX-XXXX code sent by the client")
     parser.add_argument("--days", type=int, default=30, help="subscription length in days (0 = unlimited)")
     parser.add_argument("--status", default="active")
+    parser.add_argument("--renew", type=int, metavar="DAYS",
+                        help="only update the expiry of an existing user (0 = unlimited)")
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args(argv)
 
     store = UserStore(USERS_FILE)
+
+    if args.renew is not None:
+        if not args.username:
+            parser.error("--renew requires --username")
+        record = store.renew(args.username, args.renew)
+        if record is None:
+            print(f"user tapılmadı: {args.username}")
+            return 1
+        print(f"OK: {record['username']} müddəti -> {record['expires_at'] or 'limitsiz'}")
+        return 0
 
     if args.list:
         print(json.dumps(store.list_users(), ensure_ascii=False, indent=2))

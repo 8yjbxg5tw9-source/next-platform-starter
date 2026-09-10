@@ -9,6 +9,14 @@ from __future__ import annotations
 
 import sys
 
+import customtkinter as ctk
+
+# Avtomatik ekran miqyaslamasını tam ədədə sabitləyir (DPI scaling xətalarının qarşısını alır)
+try:
+    ctk.deactivate_automatic_dpi_awareness()
+except Exception:
+    pass
+
 from akai.config import APP_NAME, APP_VERSION, log, setup_logging
 
 

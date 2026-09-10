@@ -1,11 +1,74 @@
 {
   "users": [
     {
-      "username": "demo",
-      "password": "d3ad9315b7be5dd53b31a273b3b3aba5defe700808305aa16a3062b76658a791",
+      "username": "akai01",
+      "password": "59e1b634c35f31f5c40d08fb5f7b9e8b8bfe687647b7e2454beff96e15d16ccc",
       "hwid": "",
       "status": "active",
-      "expires_at": "2028-08-30"
+      "expires_at": null
+    },
+    {
+      "username": "akai02",
+      "password": "1b91be8d27f3a7a6254d0e398045099504d9e4e57a0fa650fe8c8d68245a1f15",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai03",
+      "password": "79c99e78a8d5e76f709121b7a1f3cb9b28655026c9d91bb5b6a31a2e760127bb",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai04",
+      "password": "144f30c97e4b5a1f39be96d00556c57b4d12b5ad6f455879dc8a9d2c1d60b1e8",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai05",
+      "password": "ca609cf8014398a813447f4588c2fe6dc08e670afa4a11f92cb08a29bd0af722",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai06",
+      "password": "c556c1ff42dcada93b0e40e9c574ef2e4043c1f78e42d57c43c4c63b168498af",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai07",
+      "password": "2e9323779e98f7d285de6f682d2733315724953f62154101ba1032b791112827",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai08",
+      "password": "6a13ea59e430c610468c27b89d909a2d07c649d2954a0f9170e32ec23b082b99",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai09",
+      "password": "a3ee4a26e6600a21dbc58b0c6e1ce2224a3feddbe02607610eed2ce702ae4e84",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
+    },
+    {
+      "username": "akai10",
+      "password": "2b75f028befac970dc30a721148eb2104b53d4f061cc029ebc1314ed5894ac8e",
+      "hwid": "",
+      "status": "active",
+      "expires_at": null
     }
   ]
 }

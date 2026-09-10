@@ -112,6 +112,24 @@ class UserStore:
             self._dump()
             return record
 
+    def renew(self, username: str, days: Optional[int] = None) -> Optional[dict]:
+        """Admin helper: change only the expiry date of an existing user.
+
+        Password and bound HWID stay untouched, so a running subscription
+        can be extended (or made unlimited with ``days=0``) without forcing
+        the customer to re-bind their device.
+        """
+        with self._lock:
+            record = self._users.get(str(username).lower())
+            if record is None:
+                return None
+            record["expires_at"] = (
+                (dt.date.today() + dt.timedelta(days=int(days))).isoformat()
+                if days else None
+            )
+            self._dump()
+            return record
+
     def list_users(self) -> list:
         with self._lock:
             return [
