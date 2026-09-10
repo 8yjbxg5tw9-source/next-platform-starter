@@ -58,7 +58,7 @@ class _Slider(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
         self._label = ctk.CTkLabel(self, text=f"{label}: {value}", anchor="w",
-                                   font=ctk.CTkFont("Segoe UI", 12.5))
+                                   font=ctk.CTkFont("Segoe UI", 12))
         self._label.grid(row=0, column=0, sticky="ew")
         self._slider = ctk.CTkSlider(self, from_=0, to=100, number_of_steps=100,
                                      command=self._on_change)
@@ -173,7 +173,7 @@ class MainWindow(_window_base()):
         frame.grid(sticky="ew", pady=(0, 10))
         frame.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(frame, text=title, anchor="w",
-                     font=ctk.CTkFont("Segoe UI Semibold", 13.5),
+                     font=ctk.CTkFont("Segoe UI Semibold", 13),
                      text_color=ACCENT).grid(row=0, column=0, sticky="ew",
                                              padx=12, pady=(10, 6))
         return frame
@@ -198,7 +198,7 @@ class MainWindow(_window_base()):
             self.sliders.append(slider)
             row += 1
         self.deblur = ctk.CTkSwitch(proteus, text="Motion Deblur",
-                                    font=ctk.CTkFont("Segoe UI", 12.5))
+                                    font=ctk.CTkFont("Segoe UI", 12))
         self.deblur.grid(row=row, column=0, sticky="ew", padx=12, pady=(4, 12))
 
         # --- Upscale -------------------------------------------------------
@@ -231,7 +231,7 @@ class MainWindow(_window_base()):
         device = self._section("GPU / VRAM")
         self.device_label = ctk.CTkLabel(device, text="Cihaz yoxlanılır…",
                                          anchor="w", justify="left",
-                                         font=ctk.CTkFont("Segoe UI", 12.5))
+                                         font=ctk.CTkFont("Segoe UI", 12))
         self.device_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
 
     # ------------------------------------------------------------- callbacks
